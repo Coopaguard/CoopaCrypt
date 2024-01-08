@@ -1,19 +1,13 @@
-﻿using Microsoft.Win32;
+﻿using CoopaCrypt.Pops;
+using Microsoft.Win32;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Data;
-using System.Windows.Documents;
 using System.Windows.Input;
-using System.Windows.Media;
-using System.Windows.Media.Imaging;
-using System.Windows.Navigation;
-using System.Windows.Shapes;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace CoopaCrypt
 {
@@ -22,44 +16,254 @@ namespace CoopaCrypt
     /// </summary>
     public partial class MainWindow : Window
     {
-        string npdRegistry = "Applications\\notepad++.exe\\shell\\open\\command";
+        private PopFind findWindow;
+
         public MainWindow()
         {
             InitializeComponent();
-            Environment.GetCommandLineArgs();
+            var args = Environment.GetCommandLineArgs();
 
-
-        }
-
-        private void Button_Click(object sender, RoutedEventArgs e)
-        {
-            string? path = null;
-            try
+            if(args.Length > 0)
             {
-                path = GetNotepadPath();
+                int i = 0;
+                while(i < args.Length)
+                {
+                    if (File.Exists(args[i]) && new FileInfo(args[i]).Extension == ".coocrypt")
+                    {
+                        //open Dialog
+                        ShowOpenDialog(args[i]);
+                        break;
+                    }
+                    i++;
+                }
             }
-            catch(Exception ex)
+
+            this.LoadPosition("ViewWindow");
+
+            Task.Run(() =>
             {
-                MessageBox.Show("Merci d'installer Notepad++", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+                FileAssociation.EnsureAssociationsSet();
+            });
+        }
 
-            if (path != null)
+        private void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
+        {
+            if (findWindow != null && findWindow.IsEnabled)
             {
-                var args = "-multiInst -nosession -notabbar -alwaysOnTop -qSpeed3 -qt=\"demo content\"";
-                var current = Process.Start(path, args);
-                current.Exited += Current_Exited;
-                current.WaitForExit();
+                findWindow.Close();
+            }
+
+            this.SavePosition("ViewWindow");
+        }
+
+
+        #region actions
+
+        private void NewAction_Click(object sender, RoutedEventArgs e)
+        {
+            this.Rtb.Text = "";
+        }
+
+        private void OpenAction_Click(object sender, RoutedEventArgs e)
+        {
+            var openFileDialog = new OpenFileDialog();
+            openFileDialog.Filter = "crypted files (*.coocrypt)|*.coocrypt|All files (*.*)|*.*";
+            openFileDialog.Multiselect = false;
+
+            var fileSelected = openFileDialog.ShowDialog();
+            if (fileSelected != null && fileSelected.Value)
+            {
+                ShowOpenDialog(openFileDialog.FileName);
             }
         }
 
-        private void Current_Exited(object? sender, EventArgs e)
+        private void SaveAction_Click(object sender, RoutedEventArgs e)
         {
-            MessageBox.Show(e.ToString(), sender.ToString());
+            var saveFileDialog = new OpenFileDialog();
+            saveFileDialog.Filter = "crypted files (*.coocrypt)|*.coocrypt";
+            saveFileDialog.Multiselect = false;
+            saveFileDialog.AddExtension = true;
+            saveFileDialog.CheckFileExists = false;
+
+            var fileSelected = saveFileDialog.ShowDialog();
+            if (fileSelected != null && fileSelected.Value)
+            {
+                var popPwd = new Pops.PopCrypto();
+                popPwd.ShowDialog();
+
+                if (popPwd.Pwd != null)
+                {
+                    try
+                    {
+                        Crypto.Crypt(saveFileDialog.FileName, this.Rtb.Text, popPwd.Pwd.ToString());
+                    }
+                    catch(Exception ex)
+                    {
+                        MessageBox.Show($"Erreur lors du cryptage: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
+                }
+            }
         }
 
-        private string? GetNotepadPath()
+        private void FindAction_Click(object sender, RoutedEventArgs e)
         {
-            return Registry.ClassesRoot.OpenSubKey(npdRegistry)?.GetValue("")?.ToString().Split('"')[1];
+            ShowFind();
         }
+
+        private void ReplaceAction_Click(object sender, RoutedEventArgs e)
+        {
+            ShowFind(true);
+        }
+
+        private void UndoAction_Click(object sender, RoutedEventArgs e)
+        {
+            Rtb.Undo();
+        }
+
+        private void RedoAction_Click(object sender, RoutedEventArgs e)
+        {
+            Rtb.Redo();
+        }
+
+        private void Window_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.F && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                FindAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.R && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                ReplaceAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.O && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                OpenAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.S && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                SaveAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.E && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                RedoAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.Z && Keyboard.Modifiers == ModifierKeys.Control)
+            {
+                UndoAction_Click(sender, new RoutedEventArgs());
+            }
+
+            if (e.Key == Key.F3 && findWindow.Focusable)
+            {
+                findWindow.BtnFind_Click(sender, e);
+            }
+        }
+
+        #endregion
+
+        #region privates methods
+
+        private void ShowOpenDialog(string filePath)
+        {
+            var popPwd = new Pops.PopCrypto();
+            popPwd.ShowDialog();
+
+            if (popPwd.Pwd != null)
+            {
+                try
+                {
+                    var decrypted = Crypto.Decrypt(filePath, popPwd.Pwd.ToString());
+                    this.Rtb.Text = decrypted;
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Erreur lors du décryptage: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+        }
+
+        private void ShowFind(bool Onreplace = false)
+        {
+            var selectedText = Rtb.SelectedText;
+
+            if(findWindow == null || !findWindow.IsActive)
+            {
+                findWindow = new PopFind(this, selectedText, Onreplace);
+                findWindow.Show();
+            }
+            else
+            { 
+                findWindow.Show();
+                findWindow.Focus();
+                findWindow.Init(selectedText, Onreplace);
+            }
+        }
+
+        public void FindNext(string text, bool caseSensitive)
+        {
+            var currentPos = Rtb.SelectionStart;
+            MatchCollection match;
+
+            if (caseSensitive)
+            {
+                match = Regex.Matches(Rtb.Text, text, RegexOptions.Multiline);
+            }
+            else
+            {
+                match = Regex.Matches(Rtb.Text, text, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            }
+
+            if (match.FirstOrDefault(m => m.Success && m.Index > currentPos) is var m && m is not null)
+            {
+                Rtb.SelectionStart = m.Index;
+                Rtb.SelectionLength = m.Length;
+                Rtb.Focus();
+            }
+            else
+            {
+                Rtb.SelectionLength = 0;
+                Rtb.SelectionStart = 0;
+
+                MessageBox.Show("Fin du document atteind", "Plus d'index trouvé", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+
+        public void ReplaceNext(string find, bool caseSensitive, string replace)
+        {
+            FindNext(find, caseSensitive);
+
+            if(!string.IsNullOrWhiteSpace(Rtb.SelectedText))
+            {
+                Rtb.SelectedText = replace;
+            }
+        }
+
+        public void ReplaceAll(string find, bool caseSensitive, string replace)
+        {
+            MatchCollection match;
+
+            if (caseSensitive)
+            {
+                match = Regex.Matches(Rtb.Text, find, RegexOptions.Multiline);
+            }
+            else
+            {
+                match = Regex.Matches(Rtb.Text, find, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            }
+
+            foreach (var m in match.Select(m => m.Value).Distinct())
+            {
+                Rtb.Text = Rtb.Text.Replace(m, replace);
+            }
+
+            MessageBox.Show($"{match.Count} valeurs rempalcés", "Remplacement", MessageBoxButton.OK, MessageBoxImage.Asterisk);
+        }
+
+        #endregion
+
     }
 }
