@@ -7,7 +7,6 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace CoopaCrypt
 {
@@ -16,17 +15,17 @@ namespace CoopaCrypt
     /// </summary>
     public partial class MainWindow : Window
     {
-        private PopFind findWindow;
+        private PopFind? findWindow;
 
         public MainWindow()
         {
             InitializeComponent();
             var args = Environment.GetCommandLineArgs();
 
-            if(args.Length > 0)
+            if (args.Length > 0)
             {
                 int i = 0;
-                while(i < args.Length)
+                while (i < args.Length)
                 {
                     if (File.Exists(args[i]) && new FileInfo(args[i]).Extension == ".coocrypt")
                     {
@@ -66,9 +65,11 @@ namespace CoopaCrypt
 
         private void OpenAction_Click(object sender, RoutedEventArgs e)
         {
-            var openFileDialog = new OpenFileDialog();
-            openFileDialog.Filter = "crypted files (*.coocrypt)|*.coocrypt|All files (*.*)|*.*";
-            openFileDialog.Multiselect = false;
+            var openFileDialog = new OpenFileDialog
+            {
+                Filter = "crypted files (*.coocrypt)|*.coocrypt|All files (*.*)|*.*",
+                Multiselect = false
+            };
 
             var fileSelected = openFileDialog.ShowDialog();
             if (fileSelected != null && fileSelected.Value)
@@ -79,11 +80,13 @@ namespace CoopaCrypt
 
         private void SaveAction_Click(object sender, RoutedEventArgs e)
         {
-            var saveFileDialog = new OpenFileDialog();
-            saveFileDialog.Filter = "crypted files (*.coocrypt)|*.coocrypt";
-            saveFileDialog.Multiselect = false;
-            saveFileDialog.AddExtension = true;
-            saveFileDialog.CheckFileExists = false;
+            var saveFileDialog = new OpenFileDialog
+            {
+                Filter = "crypted files (*.coocrypt)|*.coocrypt",
+                Multiselect = false,
+                AddExtension = true,
+                CheckFileExists = false
+            };
 
             var fileSelected = saveFileDialog.ShowDialog();
             if (fileSelected != null && fileSelected.Value)
@@ -97,7 +100,7 @@ namespace CoopaCrypt
                     {
                         Crypto.Crypt(saveFileDialog.FileName, this.Rtb.Text, popPwd.Pwd.ToString());
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         MessageBox.Show($"Erreur lors du cryptage: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
@@ -157,7 +160,7 @@ namespace CoopaCrypt
                 UndoAction_Click(sender, new RoutedEventArgs());
             }
 
-            if (e.Key == Key.F3 && findWindow.Focusable)
+            if (e.Key == Key.F3 && findWindow != null && findWindow.Focusable)
             {
                 findWindow.BtnFind_Click(sender, e);
             }
@@ -190,13 +193,13 @@ namespace CoopaCrypt
         {
             var selectedText = Rtb.SelectedText;
 
-            if(findWindow == null || !findWindow.IsActive)
+            if (findWindow == null || !findWindow.IsActive)
             {
                 findWindow = new PopFind(this, selectedText, Onreplace);
                 findWindow.Show();
             }
             else
-            { 
+            {
                 findWindow.Show();
                 findWindow.Focus();
                 findWindow.Init(selectedText, Onreplace);
@@ -236,7 +239,7 @@ namespace CoopaCrypt
         {
             FindNext(find, caseSensitive);
 
-            if(!string.IsNullOrWhiteSpace(Rtb.SelectedText))
+            if (!string.IsNullOrWhiteSpace(Rtb.SelectedText))
             {
                 Rtb.SelectedText = replace;
             }

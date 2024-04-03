@@ -1,0 +1,151 @@
+﻿name:  Publish master release (CD)
+
+# Trigger on any push with a git tag
+# To create a git tag, run the following commands on the branch you wish to release:
+#   git tag 1.0.0.0
+#   git push origin --tags
+on:
+  # push:
+  #   tags:
+  #     - '*'
+  #   branches: [ "master", "feature/pipeline" ]
+  # On PR Merged on master
+  pull_request:
+    types:
+    - closed
+    branches:
+    - master
+
+
+jobs:
+
+  build:
+
+    strategy:
+
+    # The following build matrix allows builds across multiple configurations (Debug and Release) and production environments such as
+    # development, production for sideload applications and production for the Microsoft store.
+    # For more information, see https://help.github.com/en/actions/configuring-and-managing-workflows/configuring-a-workflow#configuring-a-build-matrix
+      matrix:
+        channel: [ Prod_Sideload]
+        targetPlatform: [x64] #x86
+        include:
+          - channel: Prod_Sideload
+            Configuration: Release
+            ChannelName: Prod_Sideload
+            DistributionUrl: https://github.com/Coopaguard/CoopaCrypt/releases/latest
+            MsixPackageId: CoopaCrypt.Release
+            MsixPublisherId: CN=CoopaGuard
+            MsixPackageDisplayName: CoopaCrypt
+
+    runs-on: windows-latest
+
+    env:
+      App_Packages_Directory: AppPackages
+      Repo_Folder: CoopaCrypt
+      Solution_Folder: CoopaCrypt\CoopaCrypt
+      Solution_Path: CoopaCrypt.sln
+      Wpf_Project_Path: CoopaCrypt.csproj
+      Wap_Project_Directory: WapProj
+      Wap_Project_Name: WapProj.wapproj
+      Actions_Allow_Unsecure_Commands: true # Allows AddPAth and SetEnv commands
+      # SigningCertificate: WapProj_TemporaryKey.pfx
+
+    steps:
+
+    # Install the .NET Core workload
+    - name: Install .NET Core
+      uses: actions/setup-dotnet@v3
+      with:
+        dotnet-version: '8.0.x'
+
+    # Add  MsBuild to the PATH: https://github.com/microsoft/setup-msbuild
+    - name: Setup MSBuild.exe
+      uses: microsoft/setup-msbuild@v1.1
+
+    #checkout project
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+            
+    # Update the appxmanifest before build by setting the per-channel values set in the matrix such as
+    # the Package.Identity.Version or the Package.Identity.Name, which allows multiple channels to be built.
+    - name: Update manifest version
+      run: |
+        [xml]$manifest = get-content ".\$env:Wap_Project_Directory\Package.appxmanifest"
+        #$manifest.Package.Identity.Version = "${{ steps.nbgv.outputs.SimpleVersion }}"
+        $manifest.Package.Identity.Name = "${{ matrix.MsixPackageId }}"
+        $manifest.Package.Identity.Publisher = "${{ matrix.MsixPublisherId }}"
+        $manifest.Package.Properties.DisplayName = "${{ matrix.MsixPackageDisplayName }}"
+        $manifest.Package.Applications.Application.VisualElements.DisplayName = "${{ matrix.MsixPackageDisplayName }}"
+        $manifest.save(".\$env:Wap_Project_Directory\Package.appxmanifest")
+
+    # Decode the Base64 encoded Pfx
+    # - name: Decode the Pfx
+    #   run: |
+    #     $pfx_cert_byte = [System.Convert]::FromBase64String("${{ secrets.CERT_B64 }}")
+    #     $currentDirectory = Get-Location
+    #     $certificatePath = Join-Path -Path $currentDirectory -ChildPath $env:Wap_Project_Directory -AdditionalChildPath $env:SigningCertificate
+    #     [IO.File]::WriteAllBytes("$certificatePath", $pfx_cert_byte)
+
+    # Restore the application
+    - name:  Restore the Wpf application to populate the obj folder
+      run: msbuild $env:Solution_Path /t:Restore /p:Configuration=$env:Configuration /p:RuntimeIdentifier=$env:RuntimeIdentifier
+      env:
+        Configuration: ${{ matrix.Configuration }}
+        RuntimeIdentifier: win-${{ matrix.targetplatform }}
+
+    # Build the Windows Application Packaging project for Prod_Store
+    - name: Build the Windows Application Packaging Project (wapproj) for ${{ matrix.ChannelName }}
+      run: msbuild $env:Solution_Path -v:minimal /p:Platform=$env:TargetPlatform /p:Configuration=$env:Configuration /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:GenerateAppInstallerFile=$env:GenerateAppInstallerFile /p:AppxPackageSigningEnabled=true /p:PackageCertificatePassword=${{ secrets.CERT_PWD }}
+      env:
+        AppInstallerUri: ${{ matrix.DistributionUrl }}
+        AppxBundle: Never
+        AppxPackageSigningEnabled: False
+        BuildMode: SideloadOnly
+        Configuration: ${{ matrix.Configuration }}
+        GenerateAppInstallerFile: True
+        TargetPlatform: ${{ matrix.targetplatform }}
+       
+    - name: Set env MSIX
+      id: advanced-selector
+      shell: pwsh
+      run: |
+          $file = Get-ChildItem -Path *.msix -rec | % {$_.FullName}
+          echo "BUILD_FILE=$file" | Out-File -FilePath $Env:GITHUB_ENV -Encoding utf8 -Append
+
+    # Remove the .pfx
+    # - name: Remove the .pfx
+    #   run: Remove-Item -path $env:Wap_Project_Directory\$env:SigningCertificate
+    
+    - name: "Push tag"
+      uses: EndBug/latest-tag@latest
+      with:
+      #   # You can change the name of the tag with this input.
+      #   # Default: 'latest'
+        tag-name: ${{ github.run_number }}
+
+    # Create the release:  https://github.com/actions/create-release
+    - name: Create release
+      id: create_release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # This token is provided by Actions, you do not need to create your own token
+      with:
+        tag_name: ${{ github.run_number }}
+        release_name:  Release.${{ github.run_number }}
+        draft: false
+        prerelease: false #SET to false for offical release
+
+    # Upload release asset:   https://github.com/actions/upload-release-asset
+    - name: Updload release asset
+      id: upload-release-asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}  # This pulls from the CREATE RELEASE step above, referencing it's ID to get its outputs object, which include a `upload_url`. See this blog post for more info: https://jasonet.co/posts/new-features-of-github-actions/#passing-data-to-future-steps
+        asset_path: ${{ env.BUILD_FILE }}
+        asset_name: CoopaCrypt-win-${{ matrix.targetplatform }}.msix
+        asset_content_type: application/msix
