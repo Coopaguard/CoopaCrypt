@@ -1,5 +1,10 @@
- simple AES crypter for text content files
+# Simple AES crypter for text content files
 
 
  Last build status:
- [![.NET Desktop Publish](https://github.com/Coopaguard/CoopaCrypt/actions/workflows/dotnet.yml/badge.svg?branch=master&event=pull_request)](https://github.com/Coopaguard/CoopaCrypt/actions/workflows/dotnet.yml)
+[![.NET Desktop Build & Test (CI)](https://github.com/Coopaguard/CoopaCrypt/actions/workflows/CI.yml/badge.svg?branch=master&event=push)](https://github.com/Coopaguard/CoopaCrypt/actions/workflows/CI.yml)
+
+ Latest Release:
+ [Latest](https://github.com/Coopaguard/CoopaCrypt/releases/latest)
+
+ The app is only available for Windows at this point
