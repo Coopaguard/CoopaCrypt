@@ -80,27 +80,10 @@ jobs:
 
     #Builld Step
     - name: Dotnet Build
-      run: msbuild $env:Solution_Path -v:minimal /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:Platform="Any CPU" /p:Configuration=Debug /p:Platform="x64" # /p:Platform=$env:TargetPlatform /p:Configuration=$env:Configuration 
+      run: msbuild $env:Solution_Path -v:minimal /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:Platform="Any CPU" /p:Configuration=Debug /p:Platform="x64  /p:PackageCertificatePassword=${{ secrets.CERT_PWD }}"
 
     # Test Step
     # - name: DotNet Test
     #   run: dotnet test
-
-    # #Build the project
-    # - name: Build the Windows Application Packaging Project (wapproj) for ${{ matrix.ChannelName }}
-    #   run: msbuild $env:Solution_Path /p:Platform=$env:TargetPlatform /p:Configuration=$env:Configuration /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:GenerateAppInstallerFile=$env:GenerateAppInstallerFile -v:minimal # /p:AppxPackageSigningEnabled=$env:AppxPackageSigningEnabled
-    #   env:
-    #     AppxBundle: Never
-    #     AppxPackageSigningEnabled: False
-    #     BuildMode: StoreUpload
-    #     Configuration: ${{ matrix.Configuration }}
-    #     GenerateAppInstallerFile: true
-    #     TargetPlatform: ${{ matrix.targetplatform }}
-
-    # # Upload the MSIX package: https://github.com/marketplace/actions/upload-artifact
-    # - name: Upload build artifacts
-    #   uses: actions/upload-artifact@v1
-    #   with:
-    #     name: MSIX Package
-    #     path: WapProj\AppPackages\
+    
 
