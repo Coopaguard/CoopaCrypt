@@ -80,7 +80,7 @@ jobs:
 
     #Builld Step
     - name: Dotnet Build
-      run: msbuild $env:Solution_Path -v:minimal /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:Platform="Any CPU" /p:Configuration=Debug /p:Platform="x64  /p:PackageCertificatePassword=${{ secrets.CERT_PWD }}"
+      run: msbuild $env:Solution_Path -v:minimal /p:UapAppxPackageBuildMode=$env:BuildMode /p:AppxBundle=$env:AppxBundle /p:Platform="Any CPU" /p:Configuration=Debug /p:Platform="x64" /p:PackageCertificatePassword=${{ secrets.CERT_PWD }}
 
     # Test Step
     # - name: DotNet Test
