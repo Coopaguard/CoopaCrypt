@@ -3,9 +3,12 @@
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <Nullable>enable</Nullable>
     <UseWPF>true</UseWPF>
     <ApplicationIcon>Assets\chiffrement.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <SignAssembly>False</SignAssembly>
   </PropertyGroup>
 
   <ItemGroup>

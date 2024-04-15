@@ -1,40 +1,41 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Shapes;
 
 namespace CoopaCrypt
 {
     public static class WindowExtension
     {
+        private static string _exPath => new FileInfo(System.Reflection.Assembly.GetExecutingAssembly().Location).Directory?.FullName ?? string.Empty;
+
         public static void LoadPosition(this Window window, string Name)
         {
             var fileName = Name + "-config.json";
 
-            if (File.Exists(fileName))
+            if (File.Exists(System.IO.Path.Combine(_exPath, fileName)))
             {
-                var cfg = System.Text.Json.JsonSerializer.Deserialize<WindowConfig>(File.ReadAllText(fileName));
+                var cfg = System.Text.Json.JsonSerializer.Deserialize<WindowConfig>(File.ReadAllText(System.IO.Path.Combine(_exPath, fileName)));
 
-                if(cfg.X < SystemParameters.VirtualScreenWidth && cfg.Y < Math.Abs(SystemParameters.VirtualScreenTop))
+                if(cfg != null)
                 {
-                    window.Top = cfg.Y;
-                    window.Left = cfg.X;
-                }
 
-                window.Height = cfg.Height;
-                window.Width = cfg.Width;
-                window.Opacity = cfg.Opacity;
+                    if (cfg.X < SystemParameters.VirtualScreenWidth && cfg.Y < Math.Abs(SystemParameters.VirtualScreenHeight))
+                    {
+                        window.Top = cfg.Y;
+                        window.Left = cfg.X;
+                    }
+
+                    window.Height = cfg.Height;
+                    window.Width = cfg.Width;
+                    window.Opacity = cfg.Opacity;
+                }
             }
         }
         public static void SavePosition(this Window window, string Name)
         {
             var fileName = Name + "-config.json";
-
-            var pos = window.Top;
             var cfg = new WindowConfig
             {
                 Width = window.Width,
@@ -44,7 +45,7 @@ namespace CoopaCrypt
                 Opacity = window.Opacity,
             };
 
-            File.WriteAllText(fileName, System.Text.Json.JsonSerializer.Serialize(cfg));
+            File.WriteAllText(System.IO.Path.Combine(_exPath, fileName), System.Text.Json.JsonSerializer.Serialize(cfg));
         }
     }
 

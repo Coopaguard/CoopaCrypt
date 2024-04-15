@@ -5,19 +5,21 @@ using System.Runtime.InteropServices;
 
 namespace CoopaCrypt
 {
-    public class FileAssociation
+    public partial class FileAssociation
     {
         public class FileAssociationObject
         {
-            public string Extension { get; set; }
-            public string ProgId { get; set; }
-            public string FileTypeDescription { get; set; }
-            public string ExecutableFilePath { get; set; }
+            public string Extension { get; set; } = string.Empty;
+            public string ProgId { get; set; } = string.Empty;
+            public string FileTypeDescription { get; set; } = string.Empty;
+            public string ExecutableFilePath { get; set; } = string.Empty;
         }
 
         public static void EnsureAssociationsSet()
         {
-            var filePath = Process.GetCurrentProcess().MainModule.FileName;
+            var filePath = (Process.GetCurrentProcess().MainModule?.FileName)
+                ?? throw new Exception("Enable to locate current process");
+
             EnsureAssociationsSet(
                 new FileAssociationObject
                 {
@@ -57,19 +59,17 @@ namespace CoopaCrypt
 
         private static bool SetKeyDefaultValue(string keyPath, string value)
         {
-            using (var key = Registry.CurrentUser.CreateSubKey(keyPath))
+            using var key = Registry.CurrentUser.CreateSubKey(keyPath);
+            if (key.GetValue(null) as string != value)
             {
-                if (key.GetValue(null) as string != value)
-                {
-                    key.SetValue(null, value);
-                    return true;
-                }
+                key.SetValue(null, value);
+                return true;
             }
 
             return false;
         }
 
-        [DllImport("shell32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        public static extern void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
+        [LibraryImport("shell32.dll", SetLastError = true)]
+        public static partial void SHChangeNotify(uint wEventId, uint uFlags, IntPtr dwItem1, IntPtr dwItem2);
     }
 }

@@ -366,3 +366,5 @@ FodyWeavers.xsd
 /__azurite_db_queue_extent__.json
 /__azurite_db_queue__.json
 /__azurite_db_table__.json
+/WapProj/WapProj_TemporaryKey.pfx
+/WapProj/WapProj_TemporaryKey.pfx
