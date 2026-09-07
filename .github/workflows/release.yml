@@ -233,6 +233,7 @@ jobs:
     name: Publier
     needs: [prepare, desktop, cli]
     runs-on: ubuntu-22.04
+<<<<<<< HEAD
     permissions:
       contents: write
       # Nécessaires à l'attestation de provenance : le runner obtient un jeton
@@ -245,6 +246,8 @@ jobs:
     env:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+=======
+>>>>>>> 5c5b43f (v2)
     steps:
       - uses: actions/checkout@v4
 
@@ -256,6 +259,7 @@ jobs:
           mkdir -p assets && cd assets
           gh release download "$TAG" --clobber
           # Une réexécution retéléchargerait le SHA256SUMS précédent, qui se
+<<<<<<< HEAD
           # retrouverait à se référencer lui-même. Même raison pour sa
           # signature détachée.
           rm -f SHA256SUMS SHA256SUMS.asc
@@ -301,6 +305,16 @@ jobs:
           shopt -s nullglob
           gh release upload "${{ needs.prepare.outputs.tag }}" \
             assets/SHA256SUMS assets/SHA256SUMS.asc* --clobber
+=======
+          # retrouverait à se référencer lui-même.
+          rm -f SHA256SUMS
+          # Les paquets ne sont pas signés : une somme de contrôle publiée est
+          # le seul moyen dont dispose l'utilisateur pour vérifier ce qu'il a
+          # téléchargé.
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "$TAG" SHA256SUMS --clobber
+>>>>>>> 5c5b43f (v2)
 
       - name: Rédiger les notes et publier
         env:
@@ -321,6 +335,7 @@ jobs:
           | Ligne de commande, toute distribution Linux | `coopacrypt-cli-*-musl.tar.gz`, binaire statique |
 
           Les paquets ne sont **pas signés** : Windows SmartScreen et macOS Gatekeeper
+<<<<<<< HEAD
           afficheront un avertissement d'éditeur inconnu. Il faut passer par
           « Informations complémentaires → Exécuter quand même » sur Windows, et par
           clic droit → Ouvrir sur macOS.
@@ -346,5 +361,14 @@ jobs:
           ```
           gpg --verify SHA256SUMS.asc SHA256SUMS
           ```
+=======
+          afficheront un avertissement. Vérifiez `SHA256SUMS`.
+
+          ## Vérification
+
+          ```
+          sha256sum -c SHA256SUMS --ignore-missing
+          ```
+>>>>>>> 5c5b43f (v2)
           EOF
           gh release edit "$TAG" --notes-file notes.md --draft=false
