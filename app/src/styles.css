@@ -616,6 +616,26 @@ body.is-busy .toolbar button {
   background: var(--sidebar);
 }
 
+/*
+ * Ligne horizontale : les tirets sont escamotés, la ligne devient le trait.
+ *
+ * Le trait est tracé par un pseudo-élément plutôt que par une bordure de la
+ * ligne : la ligne conserve sa hauteur normale, et le trait se pose en son
+ * milieu au lieu de coller au texte suivant.
+ */
+.cm-lp-hr {
+  position: relative;
+}
+
+.cm-lp-hr::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--border);
+}
+
 .cm-lp-strong {
   font-weight: 700;
 }

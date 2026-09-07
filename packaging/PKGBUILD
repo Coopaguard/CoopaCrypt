@@ -14,7 +14,7 @@
 #   makepkg -g >> PKGBUILD
 
 pkgname=coopacrypt
-pkgver=0.2.0
+pkgver=0.2.1
 pkgrel=1
 pkgdesc="Carnet de notes chiffré : un seul fichier markdown, sans serveur ni compte"
 arch=('x86_64' 'aarch64')

@@ -118,6 +118,19 @@ export function analyse(text: string, selFrom: number, selTo: number): Analysis 
         }
       }
 
+      // Une ligne horizontale n'a pas de texte utile : ses tirets sont
+      // escamotés et la ligne devient le trait lui-même.
+      //
+      // Contrairement aux autres styles de ligne, celui-ci n'est pas maintenu
+      // sur la ligne active : le trait barrerait le `---` en cours d'édition.
+      if (node.name === 'HorizontalRule') {
+        if (!revealed) {
+          hides.push(range);
+          lines.push({ pos: range.from, cls: 'cm-lp-hr' });
+        }
+        return false;
+      }
+
       if (node.name === 'Table') {
         if (!revealed) tables.push(range);
         // Le contenu d'un tableau rendu n'a pas à être décoré en plus.

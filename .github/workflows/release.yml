@@ -185,11 +185,20 @@ jobs:
         run: |
           BIN=target/${{ matrix.target }}/release/coopacrypt
           file "$BIN"
-          # Un binaire dynamiquement lié réintroduirait une dépendance à la
-          # glibc et ruinerait l'intérêt de la cible musl.
-          if ldd "$BIN" 2>&1 | grep -qv 'not a dynamic executable'; then
+
+          # `ldd` sort en erreur sur un binaire statique, et son libellé dépend
+          # de l'architecture : « statically linked » sur x64, « not a dynamic
+          # executable » sur ARM64. Se fier au texte revient à faire échouer une
+          # cible sur deux — c'est ce qui a bloqué la publication de la 0.2.0.
+          #
+          # Seule la présence de dépendances est un signal fiable : elles
+          # apparaissent sous la forme `libX.so => /chemin`. Un binaire
+          # dynamiquement lié réintroduirait la glibc et ruinerait l'intérêt de
+          # la cible musl.
+          report=$(ldd "$BIN" 2>&1 || true)
+          echo "$report"
+          if printf '%s\n' "$report" | grep -q '=>'; then
             echo "::error::Le binaire musl n'est pas statique."
-            ldd "$BIN" || true
             exit 1
           fi
 
