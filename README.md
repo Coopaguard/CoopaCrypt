@@ -161,6 +161,32 @@ defaults, so an old vault is silently upgraded the first time you save it.
   smuggled into a document would otherwise run with the application's privileges.
 - The application makes **no network requests at all**.
 
+### Opening a vault by double-click
+
+`.coocrypt` files are associated with the application, so a double-click opens the vault
+and asks for its password straight away. The association is declared two ways, because
+neither alone is enough:
+
+- The **installers** register it at install time — the Windows registry, the macOS
+  `Info.plist`, the Linux `.desktop` entry.
+- On Windows the application also registers itself **at startup**, under
+  `HKEY_CURRENT_USER`, covering what an installer cannot: an executable copied by hand, a
+  portable copy on a USB stick, or an association overwritten since.
+
+Self-registration makes CoopaCrypt *available* as a handler. It becomes the *default* only
+if you have not already picked something else: since Windows 8 that choice is
+hash-protected and changeable only from system settings. An application that reassigned
+your file types while starting up would be misbehaving.
+
+Startup registration is **skipped in debug builds** — it would point into `target/debug`,
+and a `cargo clean` would leave a dangling association. Set
+`COOPACRYPT_REGISTER_ASSOC=1` to force it when testing.
+
+Only **one instance** runs at a time. Double-clicking a vault while the application is
+already open hands the file to the existing window instead of starting a second process.
+That is not cosmetic: writes are atomic but not concurrent, so two windows editing one
+vault would let the last save silently discard the other's work.
+
 ### What it does not protect against
 
 Being explicit matters more than sounding reassuring:
@@ -241,9 +267,9 @@ vault: the password can end up in shell history or a CI log.
 ### Tests
 
 ```bash
-cargo test                          # 46 tests: format, header, session, atomic writes
+cargo test                          # 53 tests: format, header, session, atomic writes, launch
 cargo test --release -- --ignored   #  4 CLI integration tests (real Argon2id, slow)
-npm --prefix app test               # 33 tests: chapter splitting, search
+npm --prefix app test               # 66 tests: chapter splitting, search, live preview
 npm --prefix app run build          # strict type-check, then bundle
 cargo clippy --all-targets
 cargo fmt --all --check

@@ -36,7 +36,23 @@ export const api = {
   lock: () => invoke<void>('vault_lock'),
   state: () => invoke<SessionState>('session_state'),
   touch: () => invoke<void>('session_touch'),
+  /**
+   * Coffre ouvert par double-clic ou « Ouvrir avec », s'il y en a un.
+   *
+   * La lecture **consomme** la valeur côté Rust : un rechargement de la page ne
+   * rouvre pas le fichier du lancement précédent.
+   */
+  pendingVault: () => invoke<string | null>('pending_vault'),
 };
+
+/**
+ * Émis quand un coffre attend d'être ouvert.
+ *
+ * L'événement ne porte pas le chemin — il invite seulement à appeler
+ * `api.pendingVault()`, dont la lecture est atomique. Le faire voyager dans
+ * l'événement risquerait une double ouverture.
+ */
+export const EVENT_PENDING = 'vault://pending';
 
 /** Message d'erreur lisible, quelle que soit la forme rendue par le backend. */
 export function errorMessage(error: unknown): string {

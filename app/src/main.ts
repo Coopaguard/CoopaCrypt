@@ -7,11 +7,12 @@
  * complet, et la recherche porte toujours sur son intégralité.
  */
 
+import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import type { EditorView } from '@codemirror/view';
 
-import { api, errorMessage } from './api';
+import { api, errorMessage, EVENT_PENDING } from './api';
 import { createEditor, restoreScroll, revealRange, scrollTop, setSlice } from './editor';
 import { findAll, groupByChapter, nextMatch, replaceAll, type Match } from './search';
 import { chapterAt, replaceChapter, splitChapters, type Chapter } from './structure';
@@ -421,6 +422,27 @@ function openVault() {
     if (typeof selected !== 'string') return;
 
     await unlockFile(selected);
+  });
+}
+
+/**
+ * Ouvre le coffre transmis au lancement, par double-clic ou « Ouvrir avec ».
+ *
+ * Appelée au démarrage puis à chaque `EVENT_PENDING`, c'est-à-dire lorsqu'un
+ * second lancement a été absorbé par l'instance déjà en place.
+ *
+ * Le chemin n'est réclamé qu'à l'intérieur de `withFlow` : si un enchaînement
+ * est déjà en cours, il reste en attente côté Rust au lieu d'être consommé et
+ * perdu.
+ */
+function openPendingVault() {
+  return withFlow(async () => {
+    const path = await api.pendingVault();
+    if (!path) return;
+    if (!(await confirmDiscard())) return;
+
+    unlockError.textContent = '';
+    await unlockFile(path);
   });
 }
 
@@ -836,6 +858,14 @@ function wireUp() {
 
   window.setInterval(() => void pollSession(), SESSION_POLL_MS);
   void pollSession();
+
+  // Un double-clic sur un coffre alors que l'application tourne déjà est
+  // absorbé par l'instance en place, qui prévient par cet événement.
+  void listen(EVENT_PENDING, () => void openPendingVault());
+
+  // Lancement par double-clic : le chemin attend déjà côté Rust. Sans coffre à
+  // ouvrir, l'appel ne fait rien et l'écran verrouillé reste affiché.
+  void openPendingVault();
 }
 
 wireUp();

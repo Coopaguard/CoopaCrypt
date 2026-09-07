@@ -7,16 +7,27 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod assoc;
 mod atomic;
+mod launch;
 mod session;
 
 use std::path::PathBuf;
 
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use zeroize::Zeroizing;
 
+use launch::Pending;
 use session::Session;
+
+/// Signale à la page qu'un coffre attend d'être ouvert.
+///
+/// L'événement ne transporte **pas** le chemin : il invite seulement la page à
+/// venir le réclamer par [`pending_vault`]. Faire passer le chemin par
+/// l'événement le dupliquerait, avec le risque d'ouvrir deux fois le même
+/// fichier ; la lecture, elle, consomme la valeur.
+const EVENT_PENDING: &str = "vault://pending";
 
 /// Exécute un traitement coûteux hors du thread de l'interface.
 ///
@@ -237,6 +248,18 @@ fn session_touch(session: State<'_, Session>) {
     session.touch();
 }
 
+/// Rend le coffre demandé au lancement, et l'oublie.
+///
+/// La page l'appelle au chargement, puis à chaque réception de
+/// [`EVENT_PENDING`]. Rendre `None` est le cas courant : l'application démarrée
+/// depuis un raccourci n'a pas de coffre à ouvrir.
+#[tauri::command]
+fn pending_vault(pending: State<'_, Pending>) -> Option<String> {
+    pending
+        .take()
+        .map(|path| path.to_string_lossy().into_owned())
+}
+
 /// Point d'entrée de l'application.
 ///
 /// # Panics
@@ -244,9 +267,47 @@ fn session_touch(session: State<'_, Session>) {
 /// Si l'environnement graphique ne permet pas de démarrer Tauri.
 pub fn run() {
     tauri::Builder::default()
+        // À déclarer en premier : le plugin doit trancher entre les instances
+        // avant que quoi que ce soit d'autre ne s'initialise.
+        //
+        // Un double-clic sur un coffre lance systématiquement un nouveau
+        // processus. Sans cette écluse, deux fenêtres pourraient éditer le même
+        // fichier, et le dernier enregistrement écraserait silencieusement le
+        // travail de l'autre — l'écriture est atomique, pas concurrente.
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            if let Some(path) = launch::from_args(argv) {
+                app.state::<Pending>().set(path);
+                let _ = app.emit(EVENT_PENDING, ());
+            }
+
+            // La seconde instance s'arrête : sans reprise de focus, le
+            // double-clic n'aurait aucun effet visible.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             app.manage(Session::default());
+
+            let pending = Pending::default();
+            // Windows et Linux transmettent le chemin en argument. Sur macOS
+            // il arrivera plus tard, par `RunEvent::Opened`.
+            if let Some(path) = launch::from_args(std::env::args()) {
+                pending.set(path);
+            }
+            app.manage(pending);
+
+            // Une association manquante est une gêne, pas une raison
+            // d'empêcher le démarrage : l'échec est seulement tracé.
+            match assoc::ensure_registered() {
+                Ok(assoc::Outcome::Registered) => {
+                    eprintln!("association .coocrypt enregistrée");
+                }
+                Ok(assoc::Outcome::AlreadyCurrent | assoc::Outcome::Skipped) => {}
+                Err(error) => eprintln!("association .coocrypt non enregistrée : {error}"),
+            }
 
             // L'icône de la barre des tâches est celle de la **fenêtre**, pas
             // celle du fichier exécutable. La définir explicitement évite de
@@ -269,7 +330,41 @@ pub fn run() {
             vault_lock,
             session_state,
             session_touch,
+            pending_vault,
         ])
-        .run(tauri::generate_context!())
-        .expect("démarrage de l'application");
+        .build(tauri::generate_context!())
+        .expect("démarrage de l'application")
+        .run(|app, event| on_run_event(app, &event));
 }
+
+/// Traite les événements du cycle de vie de l'application.
+///
+/// Seules les plateformes Apple en produisent un qui nous concerne : macOS et
+/// iOS ne passent pas le fichier ouvert en argument de ligne de commande mais
+/// émettent [`tauri::RunEvent::Opened`], y compris pour un « Ouvrir avec »
+/// reçu alors que l'application tourne déjà.
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+fn on_run_event(app: &tauri::AppHandle, event: &tauri::RunEvent) {
+    let tauri::RunEvent::Opened { urls } = event else {
+        return;
+    };
+
+    // Les URL sont normalement en `file://`. Le repli sur la chaîne brute
+    // couvre le cas où la conversion échoue, plutôt que d'ignorer la demande.
+    let first = urls
+        .iter()
+        .find_map(|url| url.to_file_path().ok())
+        .or_else(|| urls.first().map(|url| PathBuf::from(url.as_str())));
+
+    if let Some(path) = first {
+        app.state::<Pending>().set(path);
+        // Perdu si la page n'est pas encore chargée : elle interrogera
+        // `pending_vault` de toute façon à son démarrage.
+        let _ = app.emit(EVENT_PENDING, ());
+    }
+}
+
+/// Aucun événement à traiter hors des plateformes Apple : le chemin y arrive
+/// en argument de ligne de commande, lu au démarrage.
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+fn on_run_event(_app: &tauri::AppHandle, _event: &tauri::RunEvent) {}

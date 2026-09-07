@@ -367,6 +367,41 @@ vraie édition. Le corriger suppose de tenir la pile d'annulation au niveau du d
 non de l'éditeur — un chantier à part entière. Le défaut est documenté dans
 `app/src/editor.ts` plutôt que masqué.
 
+### Association du type de fichier — **faite**
+
+Un double-clic sur un `.coocrypt` ouvre le coffre et demande son mot de passe.
+
+- [x] `bundle.fileAssociations` : les installeurs déclarent l'association (registre
+      Windows, `Info.plist` macOS, `MimeType` du `.desktop` sous Linux)
+- [x] Auto-enregistrement au démarrage sous `HKEY_CURRENT_USER` (`assoc.rs`), pour ce
+      que l'installeur ne couvre pas — exécutable copié à la main, clé USB, association
+      écrasée depuis
+- [x] Récupération du chemin de lancement : argument de ligne de commande sous Windows et
+      Linux, `RunEvent::Opened` sous macOS
+- [x] **Instance unique** (`tauri-plugin-single-instance`)
+
+Trois points méritent d'être retenus.
+
+`RunEvent::Opened` se déclenche **avant** que la page soit chargée, et un événement Tauri
+émis sans auditeur est perdu. Le chemin est donc déposé dans un emplacement d'attente que
+la page vient vider, et l'événement ne sert qu'à la prévenir. La lecture **consomme** la
+valeur : sans cela, un rechargement de la page rouvrirait le fichier précédent.
+
+L'instance unique n'est pas cosmétique. Un double-clic lance toujours un nouveau
+processus ; deux fenêtres sur le même coffre, et le dernier enregistrement écraserait
+silencieusement l'autre — l'écriture est atomique, pas concurrente.
+
+L'enregistrement est **ignoré en compilation de débogage**, sauf
+`COOPACRYPT_REGISTER_ASSOC=1`. La raison s'est vérifiée d'elle-même : l'association v1
+trouvée sur le poste de développement pointait vers
+`CoopaCrypt\bin\Debug\net8.0-windows\CoopaCrypt.exe`, un chemin de build. C'est
+exactement l'association orpheline que ce garde-fou évite.
+
+Enfin, écrire sous `HKCU\Software\Classes` rend l'application **disponible**, et
+gestionnaire **par défaut** seulement en l'absence de `UserChoice` — protégé par
+empreinte depuis Windows 8. C'est le bon comportement : une application qui démarre n'a
+pas à réaffecter les types de fichiers de l'utilisateur.
+
 ### Reste à faire
 
 - [ ] Historique d'annulation global traversant les chapitres
