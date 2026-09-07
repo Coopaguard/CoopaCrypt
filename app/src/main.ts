@@ -7,19 +7,12 @@
  * complet, et la recherche porte toujours sur son intégralité.
  */
 
-<<<<<<< HEAD
 import { listen } from '@tauri-apps/api/event';
-=======
->>>>>>> 5c5b43f (v2)
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import type { EditorView } from '@codemirror/view';
 
-<<<<<<< HEAD
 import { api, errorMessage, EVENT_PENDING } from './api';
-=======
-import { api, errorMessage } from './api';
->>>>>>> 5c5b43f (v2)
 import { createEditor, restoreScroll, revealRange, scrollTop, setSlice } from './editor';
 import { findAll, groupByChapter, nextMatch, replaceAll, type Match } from './search';
 import { chapterAt, replaceChapter, splitChapters, type Chapter } from './structure';
@@ -433,7 +426,6 @@ function openVault() {
 }
 
 /**
-<<<<<<< HEAD
  * Ouvre le coffre transmis au lancement, par double-clic ou « Ouvrir avec ».
  *
  * Appelée au démarrage puis à chaque `EVENT_PENDING`, c'est-à-dire lorsqu'un
@@ -455,8 +447,6 @@ function openPendingVault() {
 }
 
 /**
-=======
->>>>>>> 5c5b43f (v2)
  * Déverrouille un coffre, en redemandant le mot de passe autant de fois que
  * nécessaire.
  *
@@ -868,7 +858,6 @@ function wireUp() {
 
   window.setInterval(() => void pollSession(), SESSION_POLL_MS);
   void pollSession();
-<<<<<<< HEAD
 
   // Un double-clic sur un coffre alors que l'application tourne déjà est
   // absorbé par l'instance en place, qui prévient par cet événement.
@@ -877,8 +866,6 @@ function wireUp() {
   // Lancement par double-clic : le chemin attend déjà côté Rust. Sans coffre à
   // ouvrir, l'appel ne fait rien et l'écran verrouillé reste affiché.
   void openPendingVault();
-=======
->>>>>>> 5c5b43f (v2)
 }
 
 wireUp();

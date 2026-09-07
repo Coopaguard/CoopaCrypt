@@ -3,12 +3,8 @@ name = "coopacrypt-app"
 description = "Application de bureau CoopaCrypt"
 version.workspace = true
 edition.workspace = true
-<<<<<<< HEAD
 # 1.77.2 est le minimum de `tauri-plugin-single-instance`.
 rust-version = "1.77.2"
-=======
-rust-version = "1.77"
->>>>>>> 5c5b43f (v2)
 license.workspace = true
 repository.workspace = true
 
@@ -29,7 +25,6 @@ serde = { version = "1", features = ["derive"] }
 # `image-png` permet de charger l'icône de fenêtre depuis un PNG embarqué.
 tauri = { version = "2", features = ["image-png"] }
 tauri-plugin-dialog = "2"
-<<<<<<< HEAD
 # Un double-clic sur un coffre lance toujours un nouveau processus. Sans
 # instance unique, deux fenêtres pourraient éditer le même fichier et le
 # dernier enregistrement écraserait l'autre en silence.
@@ -41,6 +36,4 @@ zeroize = { version = "1", features = ["derive"] }
 winreg = "0.56"
 # `SHChangeNotify` prévient l'explorateur que les associations ont changé.
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
-=======
 zeroize = { version = "1", features = ["derive"] }
->>>>>>> 5c5b43f (v2)
