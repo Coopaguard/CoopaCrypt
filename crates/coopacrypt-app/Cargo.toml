@@ -1,0 +1,27 @@
+[package]
+name = "coopacrypt-app"
+description = "Application de bureau CoopaCrypt"
+version.workspace = true
+edition.workspace = true
+rust-version = "1.77"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "coopacrypt_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "coopacrypt-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+coopacrypt-core = { path = "../coopacrypt-core" }
+serde = { version = "1", features = ["derive"] }
+# `image-png` permet de charger l'icône de fenêtre depuis un PNG embarqué.
+tauri = { version = "2", features = ["image-png"] }
+tauri-plugin-dialog = "2"
+zeroize = { version = "1", features = ["derive"] }

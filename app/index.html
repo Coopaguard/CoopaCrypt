@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Le titre reste constant : il ne doit jamais refléter le contenu du coffre.
+      Un nom de chapitre visible dans la barre des tâches ou sur une capture
+      d'écran serait une fuite (UI.md §5.1).
+    -->
+    <title>CoopaCrypt</title>
+  </head>
+  <body>
+    <!-- Écran verrouillé : aucune trace du contenu ni de la structure. -->
+    <main id="screen-locked" class="locked">
+      <div class="locked-card">
+        <h1>CoopaCrypt</h1>
+        <p class="subtitle">Coffre de texte chiffré</p>
+        <p id="unlock-error" class="error" role="alert"></p>
+        <div class="locked-actions">
+          <button id="btn-unlock-open" type="button" class="primary">Ouvrir un coffre…</button>
+          <button id="btn-unlock-new" type="button">Nouveau coffre…</button>
+        </div>
+      </div>
+    </main>
+
+    <!-- Coffre déverrouillé. -->
+    <div id="screen-vault" class="vault" hidden>
+      <header class="toolbar">
+        <button id="btn-new" type="button" title="Nouveau coffre">Nouveau</button>
+        <button id="btn-open" type="button" title="Ouvrir un coffre">Ouvrir</button>
+        <button id="btn-save" type="button" title="Enregistrer (Ctrl+S)">Enregistrer</button>
+        <button id="btn-save-as" type="button" title="Enregistrer sous">Enregistrer sous…</button>
+        <span class="separator"></span>
+        <button id="btn-find" type="button" title="Rechercher (Ctrl+F)">Rechercher</button>
+        <button id="btn-chpass" type="button" title="Changer le mot de passe">Mot de passe…</button>
+        <span class="spacer"></span>
+        <button id="btn-lock" type="button" class="lock" title="Verrouiller (Ctrl+L)">
+          Verrouiller
+        </button>
+      </header>
+
+      <div class="body">
+        <!-- Volet : navigateur de chapitres, pas sommaire déroulant. -->
+        <nav class="sidebar" aria-label="Chapitres">
+          <h2>Chapitres</h2>
+          <ul id="outline-list" class="outline"></ul>
+
+          <section id="search-panel" hidden>
+            <div class="search-head">
+              <h2>Recherche</h2>
+              <button id="btn-search-close" type="button" class="icon" title="Fermer">✕</button>
+            </div>
+            <input id="search-input" type="text" placeholder="Rechercher…" autocomplete="off" />
+            <input id="replace-input" type="text" placeholder="Remplacer par…" autocomplete="off" />
+            <label class="check">
+              <input id="search-case" type="checkbox" />
+              Sensible à la casse
+            </label>
+            <div class="search-actions">
+              <button id="btn-search-next" type="button">Suivant (F3)</button>
+              <button id="btn-replace-all" type="button">Remplacer tout</button>
+            </div>
+            <!-- Résultats groupés par chapitre : la répartition doit être
+                 visible avant de naviguer (UI.md §4.2). -->
+            <div id="search-results" class="results"></div>
+          </section>
+        </nav>
+
+        <!--
+          Vue unique : le markdown est rendu dans l'éditeur lui-même, et seule
+          la ligne du curseur montre son source. Un second volet en lecture
+          seule dupliquerait le contenu sans rien apprendre de plus.
+        -->
+        <main class="editor-pane">
+          <div id="editor"></div>
+        </main>
+      </div>
+
+      <footer class="status">
+        <span id="status-text"></span>
+        <span id="status-dirty"></span>
+        <span class="spacer"></span>
+        <span id="status-timer" class="timer"></span>
+      </footer>
+    </div>
+
+    <!-- Voile d'attente : une opération de chiffrement est en cours. -->
+    <div id="busy-overlay" class="busy-overlay" hidden>
+      <div class="busy-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="busy-label" role="status"></p>
+      </div>
+    </div>
+
+    <dialog id="quit-dialog" class="password">
+      <h2>Modifications non enregistrées</h2>
+      <p class="hint">Le coffre a été modifié depuis le dernier enregistrement.</p>
+      <div class="dialog-actions">
+        <button id="quit-cancel" type="button">Annuler</button>
+        <button id="quit-discard" type="button">Quitter sans enregistrer</button>
+        <button id="quit-save" type="button" class="primary">Enregistrer et quitter</button>
+      </div>
+    </dialog>
+
+    <dialog id="password-dialog" class="password">
+      <h2 id="password-title">Mot de passe</h2>
+      <input id="password-input" type="password" autocomplete="off" />
+      <p id="password-error" class="dialog-error" role="alert"></p>
+      <div class="dialog-actions">
+        <button id="password-cancel" type="button">Annuler</button>
+        <button id="password-ok" type="button" class="primary">Valider</button>
+      </div>
+    </dialog>
+
+    <!--
+      Dialogue distinct pour la création d'un mot de passe : les deux saisies
+      tiennent dans une seule fenêtre. Enchaîner deux fois le même élément
+      <dialog> exposerait à l'événement « close » différé du premier tour, qui
+      viendrait annuler le second.
+    -->
+    <dialog id="newpassword-dialog" class="password">
+      <h2>Nouveau mot de passe</h2>
+      <label class="field">
+        Phrase de passe
+        <input id="newpassword-input" type="password" autocomplete="off" />
+      </label>
+      <label class="field">
+        Confirmation
+        <input id="newpassword-confirm" type="password" autocomplete="off" />
+      </label>
+      <p id="newpassword-error" class="dialog-error" role="alert"></p>
+      <p class="hint">
+        Il n’existe ni récupération, ni indice, ni réinitialisation. Cinq mots tirés au
+        hasard offrent une marge confortable.
+      </p>
+      <div class="dialog-actions">
+        <button id="newpassword-cancel" type="button">Annuler</button>
+        <button id="newpassword-ok" type="button" class="primary">Valider</button>
+      </div>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

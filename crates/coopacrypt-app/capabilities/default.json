@@ -1,0 +1,17 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Permissions minimales. La page n'accède ni au système de fichiers ni au shell : tout passe par les commandes Rust, qui seules détiennent le mot de passe.",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-confirm",
+    "dialog:allow-message",
+    "core:window:allow-destroy",
+    "core:window:allow-close"
+  ]
+}

@@ -1,0 +1,76 @@
+# Maintainer: CoopaGuard <https://github.com/Coopaguard/CoopaCrypt>
+#
+# Recette Arch Linux, à destination de l'AUR.
+#
+# Tauri ne produit pas de paquet pacman : les distributions Arch ne sont donc
+# pas couvertes par la release automatique. Cette recette compile depuis les
+# sources, ce qu'attendent les utilisateurs d'Arch — et ce qui évite d'avoir à
+# publier un binaire de plus à chaque version.
+#
+# Une AppImage est également disponible dans les releases pour qui préfère ne
+# rien compiler.
+#
+# ATTENTION : `sha256sums` est à renseigner à chaque version.
+#   makepkg -g >> PKGBUILD
+
+pkgname=coopacrypt
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Carnet de notes chiffré : un seul fichier markdown, sans serveur ni compte"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Coopaguard/CoopaCrypt"
+license=('MIT')
+
+# webkit2gtk est une dépendance de fond : l'interface est une vue web native.
+depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator' 'librsvg')
+makedepends=('rust' 'cargo' 'nodejs' 'npm' 'pkgconf')
+
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+prepare() {
+  cd "CoopaCrypt-$pkgver"
+  # `npm ci` respecte le verrou de dépendances : une recette de paquet ne doit
+  # pas résoudre des versions différentes de celles testées en amont.
+  npm --prefix app ci
+  cargo fetch --locked
+}
+
+build() {
+  cd "CoopaCrypt-$pkgver"
+  npm --prefix app run build
+  cargo build --release --locked -p coopacrypt-app -p coopacrypt-cli
+}
+
+check() {
+  cd "CoopaCrypt-$pkgver"
+  cargo test --release --locked --workspace
+}
+
+package() {
+  cd "CoopaCrypt-$pkgver"
+
+  install -Dm755 "target/release/coopacrypt-app" "$pkgdir/usr/bin/coopacrypt-app"
+  install -Dm755 "target/release/coopacrypt" "$pkgdir/usr/bin/coopacrypt"
+
+  install -Dm644 "crates/coopacrypt-app/icons/128x128.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/coopacrypt.png"
+  install -Dm644 "crates/coopacrypt-app/icons/32x32.png" \
+    "$pkgdir/usr/share/icons/hicolor/32x32/apps/coopacrypt.png"
+
+  install -Dm644 LICENSE.txt "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+  install -Dm644 FORMAT.md "$pkgdir/usr/share/doc/$pkgname/FORMAT.md"
+
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/coopacrypt.desktop" <<'DESKTOP'
+[Desktop Entry]
+Type=Application
+Name=CoopaCrypt
+Comment=Encrypted markdown notebook
+Exec=coopacrypt-app %f
+Icon=coopacrypt
+Terminal=false
+Categories=Utility;TextEditor;Security;
+MimeType=application/x-coocrypt;
+DESKTOP
+}
