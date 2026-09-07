@@ -202,12 +202,30 @@ Coûts indépendants du choix de stack.
 | Plateforme | Solution | Coût |
 |---|---|---|
 | **Windows** | SignPath Foundation (gratuit pour l'open source) — *à confirmer auprès d'eux* | 0 € |
-| | Repli : Azure Trusted Signing (exige une entité légale de 3 ans d'ancienneté) | ~10 $/mois |
+| | Repli : Azure Artifact Signing (ex-Trusted Signing) — voir la réserve ci-dessous | 9,99 $/mois |
 | | Repli : certificat OV classique (token matériel ou HSM cloud obligatoire) | 300-400 €/an |
 | **macOS** | Apple Developer Program + notarisation (obligatoire, sinon Gatekeeper bloque) | 99 $/an |
 | **iOS** | Couvert par le même compte Apple | — |
 | **Android** | Clé auto-signée hors store ; Play Store : 25 $ une fois | 0-25 $ |
 | **Linux** | Pas de signature au sens Windows ; Flatpak / AppImage avec signature GPG | 0 € |
+
+**Vérifié en septembre 2026.** Azure Artifact Signing est en disponibilité générale
+depuis avril 2026 et l'exigence de trois ans d'ancienneté a disparu : un indépendant peut
+candidater. Mais le service est ouvert aux **entreprises** des États-Unis, du Canada, de
+l'UE et du Royaume-Uni, tandis que les **particuliers sont limités aux États-Unis et au
+Canada**. Depuis la France, il faudrait donc y entrer en tant que structure, pas en tant
+que personne — point à vérifier avant de compter sur ce repli.
+
+Conditions de SignPath Foundation : licence approuvée par l'OSI sans double licence
+commerciale, **aucun composant propriétaire**, projet activement maintenu et **déjà
+publié sous la forme à signer**. CoopaCrypt remplit ces conditions (MIT, tout le code est
+dans le dépôt), et la release `v0.2.0` satisfait la dernière. Instruction annoncée : de
+quelques jours à quelques semaines.
+
+À retenir : un certificat **OV ne neutralise pas SmartScreen immédiatement**, la
+réputation se construisant avec les téléchargements. L'EV donnait historiquement une
+confiance d'emblée, mais impose un token matériel ou un HSM cloud depuis juin 2023 — le
+token physique étant inutilisable depuis un CI.
 
 ---
 
@@ -402,10 +420,28 @@ une vue web native, liée à webkit2gtk et donc à la glibc. Il n'existe pas de 
 statique de l'interface, et prétendre le contraire serait malhonnête. Les distributions
 sans `.deb` ni `.rpm` passent par l'AppImage, la recette Arch ou le flake Nix.
 
+### Provenance et signature — **partiellement faite**
+
+- [x] **Attestation de provenance** sur chaque paquet (`actions/attest-build-provenance`).
+      Gratuite, sans clé ni compte : le runner obtient un jeton OIDC dont Sigstore dérive
+      un certificat éphémère. Vérification : `gh attestation verify <fichier> -R <dépôt>`.
+- [x] Signature GPG du `SHA256SUMS` **câblée et inactive** : l'étape s'active à la
+      présence des secrets `GPG_PRIVATE_KEY` / `GPG_PASSPHRASE`, et se saute sinon
+      plutôt que d'échouer et de laisser la release en brouillon.
+
+L'attestation n'est **pas** une signature de code — SmartScreen et Gatekeeper l'ignorent.
+Mais elle prouve quelque chose qu'un certificat ne prouve pas : un certificat atteste que
+*quelqu'un* a signé le fichier, l'attestation atteste *quel commit et quel workflow* l'ont
+produit. Aucune signature ne se fait sur un poste de développement.
+
+Elle porte sur les fichiers rapatriés de la release, seul point où les paquets des six
+runners sont réunis — `tauri-action` les dépose directement depuis chacun. Elle reste
+émise par la même exécution de workflow.
+
 ### Reste à faire
 
 - [ ] Signature Windows (SignPath Foundation, gratuit pour l'open source) et
-      notarisation macOS
+      notarisation macOS (Apple Developer Program, 99 $/an, sans alternative gratuite)
 - [ ] Retirer `WapProj_TemporaryKey.pfx` de l'historique Git
 - [ ] Documentation utilisateur
 - [ ] **Vérifier les workflows sur une vraie exécution** : ils n'ont pu être validés que

@@ -18,13 +18,10 @@ Markdown headings. Long vaults stay readable instead of turning into an endless 
 
 **→ [Latest release](https://github.com/Coopaguard/CoopaCrypt/releases/latest)**
 
-> **Status.** The desktop application described here is the version 2 rewrite (Rust +
-> Tauri), currently on the `v2` branch and **not yet published as a release**. The
-> download link above still serves the original Windows-only WPF application, whose
-> encryption is superseded — see [Version 1](#version-1-superseded).
->
-> Releases are not code-signed yet, so Windows SmartScreen will warn about an unknown
-> publisher. Signing is planned; see [`evols.md`](evols.md).
+> **Status.** The application described here is the version 2 rewrite (Rust + Tauri),
+> living on the `v2` branch. Anything released before `v0.2.0` is the original
+> Windows-only WPF application, whose encryption is superseded — see
+> [Version 1](#version-1-superseded).
 
 | System | Architecture | File |
 |---|---|---|
@@ -37,12 +34,54 @@ Markdown headings. Long vaults stay readable instead of turning into an endless 
 | NixOS | x64, ARM64 | [`flake.nix`](flake.nix) — `nix build github:Coopaguard/CoopaCrypt#app` |
 | Any Linux, command line only | x64, ARM64 | `coopacrypt-cli-*-musl.tar.gz` — a single static binary |
 
-Every release carries a `SHA256SUMS` file. Since the packages are unsigned, that
-checksum is the only way to verify what you downloaded:
+### Verifying what you downloaded
+
+The packages are not code-signed, so your operating system will not vouch for them.
+Verify them yourself — for a tool that holds your passwords, this is worth the thirty
+seconds.
+
+Every release artifact carries a **build provenance attestation**, signed through
+Sigstore using the release workflow's own OIDC identity. It proves the file came out of
+this repository, at that commit, built by that workflow. Nothing was signed on anyone's
+laptop:
+
+```bash
+gh attestation verify coopacrypt_0.2.0_x64-setup.exe -R Coopaguard/CoopaCrypt
+```
+
+Failing that, every release carries a `SHA256SUMS` file:
 
 ```bash
 sha256sum -c SHA256SUMS --ignore-missing
 ```
+
+When `SHA256SUMS.asc` is present, the checksum list is itself GPG-signed:
+
+```bash
+gpg --verify SHA256SUMS.asc SHA256SUMS
+```
+
+An attestation is not a code signature: Windows SmartScreen and macOS Gatekeeper ignore
+it and will still warn about an unknown publisher. What it does give you is stronger than
+what a certificate alone proves — a certificate says *someone* signed the file, whereas
+an attestation says *which commit and which workflow* produced it. See
+[Signing](#signing) for where code signing stands.
+
+### Signing
+
+Packages are **not code-signed**, on any platform. That is a cost problem rather than a
+technical one, and it is worth stating plainly where it stands:
+
+| Platform | Status |
+|---|---|
+| **Provenance attestation** | **Done.** Free, keyless, on every artifact. |
+| **Windows** | Not yet. [SignPath Foundation](https://signpath.org/) grants free OV certificates to open-source projects and is the intended route. Note that an OV certificate does not clear SmartScreen on day one — reputation accrues with downloads. |
+| **macOS** | Not yet. Notarization requires the Apple Developer Program at $99/year; there is no free path. |
+| **Linux** | Not applicable. Direct-download packages are not expected to be signed; `SHA256SUMS` can carry a detached GPG signature. |
+
+The release workflow is already wired for GPG: set the `GPG_PRIVATE_KEY` and
+`GPG_PASSPHRASE` repository secrets and `SHA256SUMS.asc` appears in the next release. Without them
+the step is skipped rather than failing.
 
 ### About musl
 

@@ -233,6 +233,18 @@ jobs:
     name: Publier
     needs: [prepare, desktop, cli]
     runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      # Nécessaires à l'attestation de provenance : le runner obtient un jeton
+      # OIDC, dont Sigstore dérive un certificat de signature éphémère.
+      id-token: write
+      attestations: write
+    # Le contexte `secrets` n'est pas lisible depuis le `if` d'une étape : la
+    # clé est exposée en variable d'environnement du travail, ce qui permet de
+    # tester sa présence via `env`.
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
 
@@ -244,14 +256,51 @@ jobs:
           mkdir -p assets && cd assets
           gh release download "$TAG" --clobber
           # Une réexécution retéléchargerait le SHA256SUMS précédent, qui se
-          # retrouverait à se référencer lui-même.
-          rm -f SHA256SUMS
-          # Les paquets ne sont pas signés : une somme de contrôle publiée est
-          # le seul moyen dont dispose l'utilisateur pour vérifier ce qu'il a
-          # téléchargé.
+          # retrouverait à se référencer lui-même. Même raison pour sa
+          # signature détachée.
+          rm -f SHA256SUMS SHA256SUMS.asc
           sha256sum * > SHA256SUMS
           cat SHA256SUMS
-          gh release upload "$TAG" SHA256SUMS --clobber
+
+      # Provenance vérifiable des paquets. Ce n'est pas une signature de code :
+      # SmartScreen et Gatekeeper l'ignorent. Mais elle apporte ce qu'aucun
+      # certificat ne donne — la preuve que ce fichier précis est sorti de ce
+      # dépôt, à ce commit, par ce workflow.
+      #
+      # Elle porte sur les fichiers tels que publiés sur la release plutôt que
+      # sur les répertoires de compilation : les paquets Tauri sont déposés
+      # directement par `tauri-action` depuis six runners, et les rapatrier ici
+      # est le seul point où ils sont tous réunis. L'attestation reste émise
+      # par la même exécution de workflow.
+      - name: Attester la provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: 'assets/*'
+
+      # La signature GPG ne s'active que si la clé est présente : sans elle le
+      # travail continue avec le seul SHA256SUMS, au lieu d'échouer et de
+      # laisser la release en brouillon.
+      - name: Signer les sommes de contrôle
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          printenv GPG_PRIVATE_KEY | gpg --batch --import
+          # `--pinentry-mode loopback` : sans lui gpg cherche à ouvrir un
+          # dialogue, impossible sur un runner.
+          printenv GPG_PASSPHRASE | gpg --batch --yes \
+            --pinentry-mode loopback --passphrase-fd 0 \
+            --armor --detach-sign --output assets/SHA256SUMS.asc \
+            assets/SHA256SUMS
+          gpg --verify assets/SHA256SUMS.asc assets/SHA256SUMS
+
+      - name: Déposer les sommes de contrôle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `SHA256SUMS.asc` n'existe que si la clé GPG est configurée ; le
+          # glob doit donc pouvoir ne rien produire.
+          shopt -s nullglob
+          gh release upload "${{ needs.prepare.outputs.tag }}" \
+            assets/SHA256SUMS assets/SHA256SUMS.asc* --clobber
 
       - name: Rédiger les notes et publier
         env:
@@ -272,12 +321,30 @@ jobs:
           | Ligne de commande, toute distribution Linux | `coopacrypt-cli-*-musl.tar.gz`, binaire statique |
 
           Les paquets ne sont **pas signés** : Windows SmartScreen et macOS Gatekeeper
-          afficheront un avertissement. Vérifiez `SHA256SUMS`.
+          afficheront un avertissement d'éditeur inconnu. Il faut passer par
+          « Informations complémentaires → Exécuter quand même » sur Windows, et par
+          clic droit → Ouvrir sur macOS.
 
           ## Vérification
 
+          Chaque paquet porte une **attestation de provenance** : elle prouve que le
+          fichier est bien sorti de ce dépôt, à ce commit, par le workflow de release.
+          C'est la vérification la plus forte disponible ici.
+
+          ```
+          gh attestation verify <fichier> -R ${{ github.repository }}
+          ```
+
+          À défaut, les sommes de contrôle :
+
           ```
           sha256sum -c SHA256SUMS --ignore-missing
+          ```
+
+          Si `SHA256SUMS.asc` est présent, la liste elle-même est signée :
+
+          ```
+          gpg --verify SHA256SUMS.asc SHA256SUMS
           ```
           EOF
           gh release edit "$TAG" --notes-file notes.md --draft=false
