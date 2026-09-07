@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+# Une seule exécution par branche : les suivantes annulent la précédente.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Les avertissements sont des erreurs en intégration continue : un projet de
+  # sécurité n'a pas à laisser filer un `unused` ou un lint clippy.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  # Qualité et tests : un seul système suffit, le code n'est pas spécifique à
+  # une plateforme. Les compilations multiplateformes sont vérifiées à part.
+  quality:
+    name: Qualité et tests
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dépendances système Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf xdg-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm --prefix app ci
+
+      - name: Format Rust
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --all-targets --all-features
+
+      - name: Tests Rust
+        run: cargo test --workspace
+
+      - name: Tests d'intégration de la CLI
+        # Ignorés par défaut : chacun effectue de vraies dérivations Argon2id.
+        run: cargo test --release -p coopacrypt-cli -- --ignored
+
+      - name: Typage et bundle du front
+        run: npm --prefix app run build
+
+      - name: Tests du front
+        run: npm --prefix app test
+
+  # Vérifie que l'application se compile partout où elle est distribuée. On ne
+  # produit pas les paquets ici : c'est long, et c'est le rôle de la release.
+  compile:
+    name: Compilation ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, label: 'Linux x64' }
+          - { os: windows-latest, label: 'Windows x64' }
+          - { os: macos-latest, label: 'macOS ARM64' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dépendances système Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf xdg-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.os }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm --prefix app ci
+
+      # Le bundle du front doit exister : le backend l'embarque en release.
+      - run: npm --prefix app run build
+
+      - name: Compiler l'application et la CLI
+        run: cargo build --release --workspace
+
+  # Garde-fou du format de fichier. Les vecteurs sont gelés : les régénérer
+  # revient à changer les valeurs par défaut, ce qui doit être délibéré.
+  vectors:
+    name: Vecteurs de test gelés
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Régénérer et comparer
+        run: |
+          cargo run --release --example gen_vectors -p coopacrypt-core
+          if ! git diff --quiet -- crates/coopacrypt-core/tests/vectors.json; then
+            echo "::error::Les vecteurs de test ne correspondent plus au code."
+            echo "Le format ou les paramètres par défaut ont changé."
+            echo "Si c'est délibéré, committez le vectors.json régénéré."
+            git diff --stat -- crates/coopacrypt-core/tests/vectors.json
+            exit 1
+          fi

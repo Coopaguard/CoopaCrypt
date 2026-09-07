@@ -1,0 +1,350 @@
+name: Release
+
+# Déclenchée par une étiquette de version : `git tag v0.2.0 && git push --tags`.
+#
+# L'ancien déclencheur sur fermeture de pull request publiait une release même
+# lorsque la pull request était fermée sans être fusionnée. Une étiquette est un
+# geste explicite, et elle porte le numéro de version.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Étiquette à publier (ex. v0.2.0)"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Crée la release en brouillon d'abord : les travaux suivants y déposent
+  # leurs paquets, et elle n'est publiée qu'une fois tout arrivé.
+  prepare:
+    name: Préparer la release
+    runs-on: ubuntu-22.04
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Vérifier la cohérence de la version
+        id: meta
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          MANIFEST=$(node -p "require('./crates/coopacrypt-app/tauri.conf.json').version")
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          # Publier une étiquette qui ne correspond pas à la version embarquée
+          # dans l'application donnerait des paquets mal nommés et des mises à
+          # jour incohérentes.
+          if [ "$VERSION" != "$MANIFEST" ]; then
+            echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+            exit 1
+          fi
+
+      - name: Créer le brouillon
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "Release déjà présente, réutilisée."
+          else
+            gh release create "${{ steps.meta.outputs.tag }}" \
+              --draft \
+              --title "CoopaCrypt ${{ steps.meta.outputs.version }}" \
+              --notes "Paquets en cours de construction…"
+          fi
+
+  # --- Application de bureau ------------------------------------------------
+  #
+  # Les paquets dépendent de webkit2gtk sur Linux, donc d'une glibc : il n'y a
+  # pas de variante musl statique possible pour l'interface graphique. La CLI,
+  # elle, en propose une (voir le travail `cli`).
+  desktop:
+    name: App ${{ matrix.label }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Ubuntu 22.04 plutôt que 24.04 : l'AppImage produit se lie à la
+          # glibc du système de compilation, et la plus ancienne disponible
+          # offre la compatibilité la plus large.
+          - os: ubuntu-22.04
+            label: Linux x64
+            args: ''
+          - os: ubuntu-22.04-arm
+            label: Linux ARM64
+            args: ''
+          - os: windows-latest
+            label: Windows x64
+            args: ''
+          # WiX ne produit pas de MSI ARM64 : sur cette plateforme, seul
+          # l'installeur NSIS est disponible.
+          - os: windows-11-arm
+            label: Windows ARM64
+            args: '--bundles nsis'
+          - os: macos-latest
+            label: macOS ARM64
+            args: '--target aarch64-apple-darwin'
+          - os: macos-latest
+            label: macOS x64
+            args: '--target x86_64-apple-darwin'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dépendances système Tauri
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev \
+            patchelf xdg-utils
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Cible macOS x64
+        if: matrix.label == 'macOS x64'
+        run: rustup target add x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.label }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - run: npm --prefix app ci
+
+      - name: Construire et publier les paquets
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          # La configuration Tauri vit dans `crates/coopacrypt-app` ; la CLI la
+          # découvre depuis la racine du dépôt.
+          projectPath: '.'
+          tagName: ${{ needs.prepare.outputs.tag }}
+          releaseName: CoopaCrypt ${{ needs.prepare.outputs.version }}
+          releaseDraft: true
+          args: ${{ matrix.args }}
+
+  # --- Outil en ligne de commande -------------------------------------------
+  #
+  # Les cibles musl produisent un binaire entièrement statique : un seul fichier
+  # qui fonctionne sur Debian, Arch, NixOS, Alpine et tout le reste, sans
+  # dépendance système.
+  cli:
+    name: CLI ${{ matrix.target }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, target: x86_64-unknown-linux-musl, ext: '' }
+          - { os: ubuntu-22.04-arm, target: aarch64-unknown-linux-musl, ext: '' }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc, ext: '.exe' }
+          - { os: windows-11-arm, target: aarch64-pc-windows-msvc, ext: '.exe' }
+          - { os: macos-latest, target: aarch64-apple-darwin, ext: '' }
+          - { os: macos-latest, target: x86_64-apple-darwin, ext: '' }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Chaîne de compilation musl
+        if: contains(matrix.target, 'musl')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: cli-${{ matrix.target }}
+
+      - name: Compiler
+        run: cargo build --release -p coopacrypt-cli --target ${{ matrix.target }}
+
+      - name: Vérifier que le binaire musl est bien statique
+        if: contains(matrix.target, 'musl')
+        run: |
+          BIN=target/${{ matrix.target }}/release/coopacrypt
+          file "$BIN"
+          # Un binaire dynamiquement lié réintroduirait une dépendance à la
+          # glibc et ruinerait l'intérêt de la cible musl.
+          if ldd "$BIN" 2>&1 | grep -qv 'not a dynamic executable'; then
+            echo "::error::Le binaire musl n'est pas statique."
+            ldd "$BIN" || true
+            exit 1
+          fi
+
+      - name: Rassembler les fichiers
+        shell: bash
+        run: |
+          NAME="coopacrypt-cli-${{ needs.prepare.outputs.version }}-${{ matrix.target }}"
+          echo "PKG_NAME=$NAME" >> "$GITHUB_ENV"
+          mkdir -p "dist/$NAME"
+          cp "target/${{ matrix.target }}/release/coopacrypt${{ matrix.ext }}" "dist/$NAME/"
+          cp README.md FORMAT.md LICENSE.txt "dist/$NAME/"
+
+      # `tar` sur les systèmes Unix, `Compress-Archive` sur Windows : `7z`
+      # n'est pas garanti sur le runner ARM.
+      - name: Archiver (Unix)
+        if: runner.os != 'Windows'
+        run: tar -C dist -czf "dist/$PKG_NAME.tar.gz" "$PKG_NAME"
+
+      - name: Archiver (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/$env:PKG_NAME" -DestinationPath "dist/$env:PKG_NAME.zip"
+
+      - name: Déposer sur la release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # Un glob non satisfait serait transmis littéralement à `gh`, qui
+          # échouerait sur un nom de fichier inexistant.
+          shopt -s nullglob
+          files=(dist/*.tar.gz dist/*.zip)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::error::Aucune archive produite."
+            exit 1
+          fi
+          gh release upload "${{ needs.prepare.outputs.tag }}" "${files[@]}" --clobber
+
+  # --- Publication ----------------------------------------------------------
+  publish:
+    name: Publier
+    needs: [prepare, desktop, cli]
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      # Nécessaires à l'attestation de provenance : le runner obtient un jeton
+      # OIDC, dont Sigstore dérive un certificat de signature éphémère.
+      id-token: write
+      attestations: write
+    # Le contexte `secrets` n'est pas lisible depuis le `if` d'une étape : la
+    # clé est exposée en variable d'environnement du travail, ce qui permet de
+    # tester sa présence via `env`.
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sommes de contrôle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          mkdir -p assets && cd assets
+          gh release download "$TAG" --clobber
+          # Une réexécution retéléchargerait le SHA256SUMS précédent, qui se
+          # retrouverait à se référencer lui-même. Même raison pour sa
+          # signature détachée.
+          rm -f SHA256SUMS SHA256SUMS.asc
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+
+      # Provenance vérifiable des paquets. Ce n'est pas une signature de code :
+      # SmartScreen et Gatekeeper l'ignorent. Mais elle apporte ce qu'aucun
+      # certificat ne donne — la preuve que ce fichier précis est sorti de ce
+      # dépôt, à ce commit, par ce workflow.
+      #
+      # Elle porte sur les fichiers tels que publiés sur la release plutôt que
+      # sur les répertoires de compilation : les paquets Tauri sont déposés
+      # directement par `tauri-action` depuis six runners, et les rapatrier ici
+      # est le seul point où ils sont tous réunis. L'attestation reste émise
+      # par la même exécution de workflow.
+      - name: Attester la provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: 'assets/*'
+
+      # La signature GPG ne s'active que si la clé est présente : sans elle le
+      # travail continue avec le seul SHA256SUMS, au lieu d'échouer et de
+      # laisser la release en brouillon.
+      - name: Signer les sommes de contrôle
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          printenv GPG_PRIVATE_KEY | gpg --batch --import
+          # `--pinentry-mode loopback` : sans lui gpg cherche à ouvrir un
+          # dialogue, impossible sur un runner.
+          printenv GPG_PASSPHRASE | gpg --batch --yes \
+            --pinentry-mode loopback --passphrase-fd 0 \
+            --armor --detach-sign --output assets/SHA256SUMS.asc \
+            assets/SHA256SUMS
+          gpg --verify assets/SHA256SUMS.asc assets/SHA256SUMS
+
+      - name: Déposer les sommes de contrôle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # `SHA256SUMS.asc` n'existe que si la clé GPG est configurée ; le
+          # glob doit donc pouvoir ne rien produire.
+          shopt -s nullglob
+          gh release upload "${{ needs.prepare.outputs.tag }}" \
+            assets/SHA256SUMS assets/SHA256SUMS.asc* --clobber
+
+      - name: Rédiger les notes et publier
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ needs.prepare.outputs.tag }}"
+          cat > notes.md <<'EOF'
+          ## Installation
+
+          | Système | Fichier |
+          |---|---|
+          | Windows x64 | `.msi` ou `.exe` (NSIS) |
+          | Windows ARM64 | `.exe` (NSIS) |
+          | macOS Apple Silicon / Intel | `.dmg` correspondant à votre processeur |
+          | Debian, Ubuntu | `.deb` |
+          | Fedora, openSUSE | `.rpm` |
+          | Arch, NixOS, autres | `.AppImage`, ou voir `packaging/` |
+          | Ligne de commande, toute distribution Linux | `coopacrypt-cli-*-musl.tar.gz`, binaire statique |
+
+          Les paquets ne sont **pas signés** : Windows SmartScreen et macOS Gatekeeper
+          afficheront un avertissement d'éditeur inconnu. Il faut passer par
+          « Informations complémentaires → Exécuter quand même » sur Windows, et par
+          clic droit → Ouvrir sur macOS.
+
+          ## Vérification
+
+          Chaque paquet porte une **attestation de provenance** : elle prouve que le
+          fichier est bien sorti de ce dépôt, à ce commit, par le workflow de release.
+          C'est la vérification la plus forte disponible ici.
+
+          ```
+          gh attestation verify <fichier> -R ${{ github.repository }}
+          ```
+
+          À défaut, les sommes de contrôle :
+
+          ```
+          sha256sum -c SHA256SUMS --ignore-missing
+          ```
+
+          Si `SHA256SUMS.asc` est présent, la liste elle-même est signée :
+
+          ```
+          gpg --verify SHA256SUMS.asc SHA256SUMS
+          ```
+          EOF
+          gh release edit "$TAG" --notes-file notes.md --draft=false

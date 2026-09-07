@@ -1,0 +1,38 @@
+[package]
+name = "coopacrypt-app"
+description = "Application de bureau CoopaCrypt"
+version.workspace = true
+edition.workspace = true
+# 1.77.2 est le minimum de `tauri-plugin-single-instance`.
+rust-version = "1.77.2"
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "coopacrypt_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "coopacrypt-app"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+coopacrypt-core = { path = "../coopacrypt-core" }
+serde = { version = "1", features = ["derive"] }
+# `image-png` permet de charger l'icône de fenêtre depuis un PNG embarqué.
+tauri = { version = "2", features = ["image-png"] }
+tauri-plugin-dialog = "2"
+# Un double-clic sur un coffre lance toujours un nouveau processus. Sans
+# instance unique, deux fenêtres pourraient éditer le même fichier et le
+# dernier enregistrement écraserait l'autre en silence.
+tauri-plugin-single-instance = "2"
+zeroize = { version = "1", features = ["derive"] }
+
+# Enregistrement de l'association `.coocrypt` dans la base de registre.
+[target.'cfg(windows)'.dependencies]
+winreg = "0.56"
+# `SHChangeNotify` prévient l'explorateur que les associations ont changé.
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }

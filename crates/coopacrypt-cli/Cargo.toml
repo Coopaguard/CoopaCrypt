@@ -1,0 +1,19 @@
+[package]
+name = "coopacrypt-cli"
+description = "Outil en ligne de commande pour les coffres .coocrypt"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "coopacrypt"
+path = "src/main.rs"
+
+[dependencies]
+coopacrypt-core = { path = "../coopacrypt-core" }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+rpassword = "7"
+zeroize = "1"

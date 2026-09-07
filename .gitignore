@@ -368,3 +368,13 @@ FodyWeavers.xsd
 /__azurite_db_table__.json
 /WapProj/WapProj_TemporaryKey.pfx
 /WapProj/WapProj_TemporaryKey.pfx
+
+# Rust
+/target/
+
+# Node
+/app/node_modules/
+/app/dist/
+
+# Tauri
+/crates/coopacrypt-app/gen/
