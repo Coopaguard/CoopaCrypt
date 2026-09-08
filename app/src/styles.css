@@ -341,7 +341,10 @@ button.result:hover {
 .cm-editor {
   height: 100%;
   font-family: var(--font-mono);
-  font-size: 13.5px;
+  /* 16 px, soit 12 pt — les 13,5 px précédents valaient 10 pt, trop petit pour
+     relire une clé caractère par caractère. Titres et numéros de ligne suivent :
+     les uns sont dimensionnés en `em`, les autres héritent. */
+  font-size: 16px;
 }
 
 .cm-editor.cm-focused {
@@ -616,6 +619,26 @@ body.is-busy .toolbar button {
   background: var(--sidebar);
 }
 
+/*
+ * Ligne horizontale : les tirets sont escamotés, la ligne devient le trait.
+ *
+ * Le trait est tracé par un pseudo-élément plutôt que par une bordure de la
+ * ligne : la ligne conserve sa hauteur normale, et le trait se pose en son
+ * milieu au lieu de coller au texte suivant.
+ */
+.cm-lp-hr {
+  position: relative;
+}
+
+.cm-lp-hr::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1px solid var(--border);
+}
+
 .cm-lp-strong {
   font-weight: 700;
 }
@@ -664,10 +687,16 @@ body.is-busy .toolbar button {
   font-weight: 600;
 }
 
-/* L'éditeur occupe désormais toute la largeur : une ligne de lecture bornée
-   reste plus confortable qu'un texte étalé sur 1 000 pixels. */
+/*
+ * Le contenu occupe toute la largeur disponible.
+ *
+ * Une largeur de lecture bornée est plus confortable pour de la prose, mais un
+ * coffre contient surtout des clés, des jetons et des tableaux — des lignes
+ * longues que rien ne doit replier avant l'heure. La marge de droite évite
+ * seulement que le texte ne touche le bord.
+ */
 .cm-content {
-  max-width: 78ch;
+  padding-right: 16px;
   font-family: var(--font-ui);
 }
 

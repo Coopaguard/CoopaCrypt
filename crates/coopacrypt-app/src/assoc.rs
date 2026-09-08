@@ -24,6 +24,12 @@
 //! l'utilisateur ne doit pas être écrasé par une application qui démarre.
 
 /// Résultat d'une tentative d'enregistrement.
+///
+/// Hors Windows, seule `Skipped` est construite : les deux autres variantes
+/// déclencheraient un `dead_code`, promu en erreur par le `-D warnings` de
+/// l'intégration continue. Les décrire quand même garde une seule forme de
+/// retour pour toutes les plateformes.
+#[cfg_attr(not(windows), allow(dead_code))]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Outcome {
     /// Les clés ont été écrites.

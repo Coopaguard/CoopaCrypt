@@ -140,6 +140,45 @@ describe('robustesse', () => {
     }
   });
 
+  describe('ligne horizontale', () => {
+    // Trois tirets et quatre tirets sont l'un comme l'autre une coupure ; c'est
+    // la forme qu'un utilisateur écrit sans réfléchir.
+    it.each(['---', '----', '***', '___'])('trace un trait pour « %s »', (rule) => {
+      const text = `Avant\n\n${rule}\n\nAprès\n`;
+      const { hides, lines } = analyse(text, -1, -1);
+
+      const start = text.indexOf(rule);
+      expect(lines).toContainEqual({ pos: start, cls: 'cm-lp-hr' });
+      // Les tirets eux-mêmes disparaissent : sans cela le trait doublerait le
+      // texte au lieu de le remplacer.
+      expect(hides).toContainEqual({ from: start, to: start + rule.length });
+    });
+
+    /**
+     * Le style de ligne est maintenu sur la ligne active pour les titres, mais
+     * pas ici : un trait tracé au milieu barrerait le `---` en cours d'édition.
+     */
+    it('rend la source et efface le trait sur la ligne active', () => {
+      const text = 'Avant\n\n---\n\nAprès\n';
+      const start = text.indexOf('---');
+      const { hides, lines } = analyse(text, start + 1, start + 1);
+
+      expect(lines).not.toContainEqual({ pos: start, cls: 'cm-lp-hr' });
+      expect(hides).not.toContainEqual({ from: start, to: start + 3 });
+    });
+
+    /**
+     * `---` sous une ligne de texte n'est pas une coupure mais un titre de
+     * niveau 2 en notation setext. Le confondre transformerait un titre en
+     * trait et ferait disparaître son texte.
+     */
+    it('ne confond pas un titre setext avec une coupure', () => {
+      const text = 'Mon titre\n---\n\nSuite\n';
+      const { lines } = analyse(text, -1, -1);
+      expect(lines.some((l) => l.cls === 'cm-lp-hr')).toBe(false);
+    });
+  });
+
   it('préserve le texte visible : rien d’utile n’est escamoté', () => {
     const text = '## Titre\n\nUn **mot** important.\n';
     const { hides } = analyse(text, -1, -1);

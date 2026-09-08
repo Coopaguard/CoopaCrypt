@@ -36,3 +36,4 @@ zeroize = { version = "1", features = ["derive"] }
 winreg = "0.56"
 # `SHChangeNotify` prévient l'explorateur que les associations ont changé.
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
+zeroize = { version = "1", features = ["derive"] }

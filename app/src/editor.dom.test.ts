@@ -60,6 +60,31 @@ describe('montage de l’éditeur', () => {
     expect(() => mount(doc)).not.toThrow();
   });
 
+  /**
+   * Une ligne horizontale escamote **tout** le contenu de sa ligne, ce qu'aucune
+   * autre décoration ne fait. Le plantage sur les tableaux a montré que ce genre
+   * de cas ne se valide qu'en montant réellement l'éditeur.
+   */
+  it('accepte une ligne horizontale', () => {
+    expect(() => mount('Avant\n\n---\n\nAprès\n')).not.toThrow();
+  });
+
+  it('accepte plusieurs lignes horizontales de suite', () => {
+    expect(() => mount('a\n\n---\n\n----\n\n***\n\nb\n')).not.toThrow();
+  });
+
+  it('accepte une ligne horizontale en fin de document, sans saut de ligne', () => {
+    expect(() => mount('Avant\n\n---')).not.toThrow();
+  });
+
+  it('bascule sans erreur quand le curseur entre dans la ligne horizontale', () => {
+    const doc = 'Avant\n\n---\n\nAprès\n';
+    const editor = mount(doc);
+    expect(() =>
+      editor.dispatch({ selection: EditorSelection.cursor(doc.indexOf('---') + 1) }),
+    ).not.toThrow();
+  });
+
   it('accepte un tableau — la régression qui faisait planter l’éditeur', () => {
     expect(() => mount(TABLE)).not.toThrow();
   });

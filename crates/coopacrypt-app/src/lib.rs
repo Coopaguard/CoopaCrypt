@@ -5,7 +5,8 @@
 //! (cf. [`session`]), et les erreurs remontées ne distinguent jamais un mauvais
 //! mot de passe d'un fichier altéré.
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+// `windows_subsystem` est posé dans `main.rs` : ici il serait sans effet, la
+// bibliothèque n'étant pas la racine du crate lié en exécutable.
 
 mod assoc;
 mod atomic;

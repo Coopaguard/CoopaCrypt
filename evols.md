@@ -473,6 +473,28 @@ Elle porte sur les fichiers rapatriés de la release, seul point où les paquets
 runners sont réunis — `tauri-action` les dépose directement depuis chacun. Elle reste
 émise par la même exécution de workflow.
 
+### Enseignements de la première exécution réelle (0.2.0)
+
+Les workflows n'avaient été validés que syntaxiquement. Trois défauts sont apparus, tous
+corrigés en 0.2.1.
+
+**Le contrôle « le binaire musl est-il statique » se trompait une fois sur deux.** Il
+cherchait le texte `not a dynamic executable` dans la sortie de `ldd`, or ce libellé
+dépend de l'architecture : x64 répond `statically linked`. La cible x86_64-musl échouait
+donc alors que le binaire était parfaitement statique, et comme `publish` attend la
+réussite de tous les travaux, **la release restait en brouillon**. Le contrôle porte
+désormais sur la présence de dépendances (`libX.so => /chemin`), seul signal indépendant
+de la plateforme.
+
+**`RUSTFLAGS: -D warnings` rend le code conditionnel dangereux.** Hors Windows, deux
+variantes de `assoc::Outcome` ne sont jamais construites : `dead_code` promu en erreur a
+fait échouer Linux et macOS pendant que Windows passait. Une compilation locale sur une
+seule plateforme ne prouve rien dès qu'un `#[cfg]` entre en jeu.
+
+**`windows_subsystem` était posé dans `lib.rs`, sans effet.** L'attribut ne vaut que pour
+la racine du crate lié en exécutable : l'application installée s'ouvrait avec une console
+derrière sa fenêtre. Déplacé dans `main.rs`.
+
 ### Reste à faire
 
 - [ ] Signature Windows (SignPath Foundation, gratuit pour l'open source) et
