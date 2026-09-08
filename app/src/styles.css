@@ -341,7 +341,10 @@ button.result:hover {
 .cm-editor {
   height: 100%;
   font-family: var(--font-mono);
-  font-size: 13.5px;
+  /* 16 px, soit 12 pt — les 13,5 px précédents valaient 10 pt, trop petit pour
+     relire une clé caractère par caractère. Titres et numéros de ligne suivent :
+     les uns sont dimensionnés en `em`, les autres héritent. */
+  font-size: 16px;
 }
 
 .cm-editor.cm-focused {
