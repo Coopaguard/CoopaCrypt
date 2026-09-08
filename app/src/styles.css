@@ -684,10 +684,16 @@ body.is-busy .toolbar button {
   font-weight: 600;
 }
 
-/* L'éditeur occupe désormais toute la largeur : une ligne de lecture bornée
-   reste plus confortable qu'un texte étalé sur 1 000 pixels. */
+/*
+ * Le contenu occupe toute la largeur disponible.
+ *
+ * Une largeur de lecture bornée est plus confortable pour de la prose, mais un
+ * coffre contient surtout des clés, des jetons et des tableaux — des lignes
+ * longues que rien ne doit replier avant l'heure. La marge de droite évite
+ * seulement que le texte ne touche le bord.
+ */
 .cm-content {
-  max-width: 78ch;
+  padding-right: 16px;
   font-family: var(--font-ui);
 }
 
