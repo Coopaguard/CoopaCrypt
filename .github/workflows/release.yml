@@ -58,6 +58,18 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
+      # Les paquets de mise à jour sont signés : sans la clé, `tauri build`
+      # échoue sur chacun des six runners de bureau. Autant le dire ici, une
+      # fois, avant d'en lancer douze.
+      - name: Vérifier la clé de signature des mises à jour
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent : les paquets de mise à jour ne peuvent pas être signés (voir README, « Cutting a release »)."
+            exit 1
+          fi
+
       - name: Déterminer la version
         id: meta
         env:
@@ -201,6 +213,11 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Signature minisign des paquets de mise à jour. L'action dépose
+          # aussi `latest.json`, le manifeste que l'application interroge au
+          # démarrage, en y fusionnant la plateforme de chaque runner.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # La configuration Tauri vit dans `crates/coopacrypt-app` ; la CLI la
           # découvre depuis la racine du dépôt.
@@ -402,6 +419,9 @@ jobs:
           | Fedora, openSUSE | `.rpm` |
           | Arch, NixOS, autres | `.AppImage`, ou voir `packaging/` |
           | Ligne de commande, toute distribution Linux | `coopacrypt-cli-*-musl.tar.gz`, binaire statique |
+
+          Une fois installée, l'application vérifie à chaque démarrage si une version
+          plus récente existe et propose de l'installer.
 
           Les paquets ne sont **pas signés** : Windows SmartScreen et macOS Gatekeeper
           afficheront un avertissement d'éditeur inconnu. Il faut passer par

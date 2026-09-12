@@ -12,7 +12,13 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 import type { EditorView } from '@codemirror/view';
 
-import { api, errorMessage, EVENT_PENDING } from './api';
+import {
+  api,
+  errorMessage,
+  EVENT_PENDING,
+  EVENT_UPDATE_PROGRESS,
+  type UpdateAvailable,
+} from './api';
 import { createEditor, restoreScroll, revealRange, scrollTop, setSlice } from './editor';
 import { findAll, groupByChapter, nextMatch, replaceAll, type Match } from './search';
 import { chapterAt, replaceChapter, splitChapters, type Chapter } from './structure';
@@ -22,6 +28,8 @@ import './styles.css';
 const SESSION_POLL_MS = 10_000;
 /** Un signal d'activité au plus toutes les 20 s : inutile de saturer l'IPC. */
 const TOUCH_THROTTLE_MS = 20_000;
+/** Cadence à laquelle la proposition de mise à jour attend qu'un enchaînement se termine. */
+const UPDATE_RETRY_MS = 2_000;
 
 interface State {
   /** Document markdown complet, déchiffré. */
@@ -758,6 +766,81 @@ function fileName(path: string): string {
   return path.split(/[\\/]/).pop() ?? path;
 }
 
+// --- mise à jour ----------------------------------------------------------
+
+/**
+ * Propose une mise à jour si une version plus récente existe.
+ *
+ * Appelée au démarrage. La vérification est silencieuse : sans réseau, ou si
+ * le serveur ne répond pas, rien ne s'affiche — l'application démarre comme
+ * d'habitude. Seule une version réellement disponible mérite une fenêtre.
+ *
+ * La proposition attend qu'aucun enchaînement ne soit en cours : un coffre
+ * ouvert par double-clic a déjà sa fenêtre de mot de passe à l'écran, et une
+ * seconde fenêtre par-dessus serait au mieux gênante.
+ */
+async function checkForUpdate() {
+  const update = await api.updateCheck().catch(() => null);
+  if (!update) return;
+  whenIdle(() => withFlow(() => proposeUpdate(update)));
+}
+
+/** Exécute `work` dès qu'aucun enchaînement n'est en cours. */
+function whenIdle(work: () => Promise<void>) {
+  if (flowActive) {
+    window.setTimeout(() => whenIdle(work), UPDATE_RETRY_MS);
+    return;
+  }
+  void work();
+}
+
+async function proposeUpdate(update: UpdateAvailable) {
+  if (!(await askUpdate(update))) return;
+  // Le processus disparaît à l'installation : ne rien laisser en suspens.
+  if (!(await resolveUnsaved())) return;
+
+  const label = 'Téléchargement de la mise à jour…';
+  const unlisten = await listen<number>(EVENT_UPDATE_PROGRESS, (event) => {
+    busyLabel.textContent = `${label} ${event.payload} %`;
+  });
+  try {
+    // Ne rend la main qu'en cas d'échec : sinon l'application est relancée.
+    await withBusy(label, () => api.updateInstall());
+  } finally {
+    unlisten();
+  }
+}
+
+/** Demande si la mise à jour doit être installée maintenant. */
+function askUpdate(update: UpdateAvailable): Promise<boolean> {
+  return new Promise((resolve) => {
+    const dialog = el<HTMLDialogElement>('update-dialog');
+    let settled = false;
+
+    el('update-summary').textContent =
+      `CoopaCrypt ${update.version} est disponible (version installée : ${update.current}).`;
+    el('update-notes').textContent = update.notes ?? '';
+
+    const finish = (accepted: boolean) => {
+      if (settled) return;
+      settled = true;
+      dialog.removeEventListener('close', onClose);
+      if (dialog.open) dialog.close();
+      resolve(accepted);
+    };
+
+    function onClose() {
+      if (!dialog.open) finish(false);
+    }
+
+    dialog.addEventListener('close', onClose);
+    el('update-install').onclick = () => finish(true);
+    el('update-later').onclick = () => finish(false);
+
+    dialog.showModal();
+  });
+}
+
 // --- session --------------------------------------------------------------
 
 function noteActivity() {
@@ -866,6 +949,10 @@ function wireUp() {
   // Lancement par double-clic : le chemin attend déjà côté Rust. Sans coffre à
   // ouvrir, l'appel ne fait rien et l'écran verrouillé reste affiché.
   void openPendingVault();
+
+  // En parallèle du reste : la réponse du réseau, si elle vient, arrive
+  // après l'affichage, et son absence ne retient rien.
+  void checkForUpdate();
 }
 
 wireUp();

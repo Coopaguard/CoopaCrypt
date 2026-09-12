@@ -140,6 +140,23 @@
       </div>
     </dialog>
 
+    <!--
+      Mise à jour disponible. Proposée une fois, au démarrage ; « Plus tard »
+      ne fait rien de plus que fermer — la question reviendra au prochain
+      lancement.
+    -->
+    <dialog id="update-dialog" class="password">
+      <h2>Mise à jour disponible</h2>
+      <p id="update-summary" class="hint"></p>
+      <p id="update-notes" class="hint update-notes"></p>
+      <div class="dialog-actions">
+        <button id="update-later" type="button">Plus tard</button>
+        <button id="update-install" type="button" class="primary">
+          Télécharger et installer
+        </button>
+      </div>
+    </dialog>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

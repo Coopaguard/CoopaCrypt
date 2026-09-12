@@ -83,6 +83,23 @@ The release workflow is already wired for GPG: set the `GPG_PRIVATE_KEY` and
 `GPG_PASSPHRASE` repository secrets and `SHA256SUMS.asc` appears in the next release. Without them
 the step is skipped rather than failing.
 
+### Updates
+
+On every start the desktop application asks GitHub whether a newer release exists. If
+so, it offers to download and install it — the way Notepad++ does. Declining just closes
+the dialog; the offer comes back on the next start. If the check fails for any reason
+(no network, GitHub unreachable), nothing is shown.
+
+Update packages are signed with a [minisign](https://jedisct1.github.io/minisign/) key
+whose public half is embedded in the application. A package whose signature does not
+match is refused, so a compromised download location cannot push arbitrary code to
+existing installs. The manifest the application reads is `latest.json`, attached to the
+latest release.
+
+Users who install through a package manager (`.deb`, `.rpm`, the Arch recipe, the Nix
+flake) keep updating through it; the in-app update covers the Windows installers, the
+macOS bundle and the Linux AppImage.
+
 ### About musl
 
 The **command-line tool** is built against musl and is fully static: one file, no
@@ -278,6 +295,14 @@ request without merging publishes nothing either.
 
 To retry a failed publication, run the workflow by hand from the Actions tab with the
 existing tag.
+
+The workflow **requires** the `TAURI_SIGNING_PRIVATE_KEY` repository secret (and
+`TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has one): it signs the update packages
+described under [Updates](#updates), and `prepare` fails early without it. The key is
+generated once with `npx tauri signer generate -w <path>` from `app/`; the public half
+goes in `plugins.updater.pubkey` of `tauri.conf.json`, the private half in the secret
+and nowhere else. Losing it means every installed copy stops seeing updates — there is
+no way to rotate it remotely.
 
 The frozen-vector guard deserves a word: CI regenerates `vectors.json` and fails if it
 differs from what is committed. A change to the file format, or merely to the default
