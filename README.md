@@ -259,19 +259,22 @@ button.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/ci.yml` | every pull request, and every push to `master` | format, clippy (warnings are errors), Rust tests, CLI integration tests, TypeScript type-check, frontend tests, compile check on Linux/Windows/macOS, and a **frozen-test-vector guard** |
-| `.github/workflows/release.yml` | every push to `master` (i.e. a merged pull request) | tags the commit `v<version>`, builds every package listed under [Download](#download), generates `SHA256SUMS`, then publishes |
+| `.github/workflows/release.yml` | a pull request from a `v<major>.<minor>.<patch>` branch merged into `master` | tags the merge commit `v<version>`, builds every package listed under [Download](#download), generates `SHA256SUMS`, then publishes |
 
-Cutting a release means bumping the version, then merging:
+Cutting a release:
 
-1. Set the new version in `Cargo.toml`, `Cargo.lock`, `app/package.json`,
+1. Create a branch named after the version, e.g. `v2.1.0`.
+2. Set that version in `Cargo.toml`, `Cargo.lock`, `app/package.json`,
    `app/package-lock.json`, `crates/coopacrypt-app/tauri.conf.json`, `flake.nix`
    and `packaging/PKGBUILD`.
-2. Open a pull request and merge it.
+3. Open a pull request and merge it.
 
-The workflow reads the version from `tauri.conf.json`, tags the merge commit
-`v<version>`, creates a draft release, fills it in from every build job, and only
-publishes once all of them have succeeded. A merge that does not change the version
-publishes nothing — the tag already exists, so the workflow stops right away.
+The workflow checks that the branch name matches the version in `tauri.conf.json`,
+tags the merge commit `v<version>`, creates a draft release, fills it in from every
+build job, and only publishes once all of them have succeeded.
+
+Merging any other branch (`feature/…`, `fix/…`) publishes nothing. Closing a pull
+request without merging publishes nothing either.
 
 To retry a failed publication, run the workflow by hand from the Actions tab with the
 existing tag.

@@ -1,17 +1,21 @@
 name: Release
 
-# Déclenchée par chaque arrivée sur `master` — en pratique, la fusion d'une
-# pull request. La version publiée est celle de `tauri.conf.json` ; le
-# workflow pose lui-même l'étiquette `v<version>` sur le commit fusionné.
+# Déclenchée par la fusion d'une pull request sur `master`, à condition que la
+# branche source soit une branche de version, nommée `v<major>.<minor>.<patch>`
+# (ex. `v2.1.0`). La fusion d'une branche `feature/…` ou `fix/…` ne publie rien.
 #
-# Une fusion qui ne change pas la version ne publie rien : l'étiquette existe
-# déjà, le workflow s'arrête à `prepare`. Publier une nouvelle version revient
-# donc à incrémenter `version` dans les manifestes avant de fusionner.
+# Le nom de la branche doit correspondre à la version de `tauri.conf.json` :
+# c'est la même garantie qu'apportait l'ancienne vérification de l'étiquette.
+# Le workflow pose lui-même l'étiquette `v<version>` sur le commit de fusion.
+#
+# Une pull request fermée sans être fusionnée ne publie rien non plus : c'est
+# le point qui manquait à l'ancien déclencheur sur fermeture.
 #
 # `workflow_dispatch` permet de relancer la publication d'une étiquette
 # existante, par exemple après l'échec d'un travail de construction.
 on:
-  push:
+  pull_request:
+    types: [closed]
     branches: [master]
   workflow_dispatch:
     inputs:
@@ -36,49 +40,70 @@ jobs:
   # qu'une fois tout arrivé.
   prepare:
     name: Préparer la release
+    # Une pull request fermée sans fusion s'arrête ici. Le filtrage sur le nom
+    # de la branche se fait à l'étape suivante : les expressions GitHub n'ont
+    # pas d'expressions régulières.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
       publish: ${{ steps.meta.outputs.publish }}
+      sha: ${{ steps.meta.outputs.sha }}
     steps:
+      # Sur l'événement `pull_request`, la référence par défaut est une fusion
+      # d'essai éphémère : le commit à étiqueter est celui réellement arrivé
+      # sur `master`.
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
       - name: Déterminer la version
         id: meta
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
         run: |
           MANIFEST=$(node -p "require('./crates/coopacrypt-app/tauri.conf.json').version")
-          TAG="${{ github.event.inputs.tag }}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
-          if [ -n "$TAG" ]; then
+          if [ -n "$INPUT_TAG" ]; then
             # Relance manuelle : l'étiquette demandée doit correspondre à la
             # version embarquée, sinon les paquets seraient mal nommés.
+            TAG="$INPUT_TAG"
             VERSION="${TAG#v}"
             if [ "$VERSION" != "$MANIFEST" ]; then
               echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
               exit 1
             fi
             PUBLISH=true
+          elif [[ ! "$SOURCE_BRANCH" =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "La branche « $SOURCE_BRANCH » n'est pas une branche de version (v<major>.<minor>.<patch>) : aucune release à publier."
+            TAG="" VERSION="" PUBLISH=false
           else
-            VERSION="$MANIFEST"
+            VERSION="${SOURCE_BRANCH#[vV]}"
             TAG="v$VERSION"
-            # Sur `master`, une étiquette déjà présente signifie que cette
-            # version est déjà publiée : la fusion n'a pas incrémenté la
-            # version, il n'y a rien à faire.
-            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
-              echo "L'étiquette $TAG existe déjà : aucune release à publier."
-              PUBLISH=false
-            else
-              PUBLISH=true
+            # Une branche `v2.1.0` qui embarque une application en 2.0.0
+            # produirait des paquets mal nommés : c'est une erreur, pas un cas
+            # à ignorer.
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "::error::La branche $SOURCE_BRANCH annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+              exit 1
             fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "::error::L'étiquette $TAG existe déjà : cette version est déjà publiée."
+              exit 1
+            fi
+            PUBLISH=true
           fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
 
-      # Étiquette légère posée sur le commit courant. Poussée avec le jeton du
-      # workflow, elle ne déclenche aucun autre workflow.
+      # Étiquette légère posée sur le commit de fusion. Poussée avec le jeton
+      # du workflow, elle ne déclenche aucun autre workflow.
       - name: Poser l'étiquette
         if: steps.meta.outputs.publish == 'true'
         run: |
@@ -86,7 +111,7 @@ jobs:
           if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
             echo "Étiquette $TAG déjà présente, conservée."
           else
-            git tag "$TAG" "$GITHUB_SHA"
+            git tag "$TAG" "${{ steps.meta.outputs.sha }}"
             git push origin "refs/tags/$TAG"
           fi
 
@@ -303,6 +328,8 @@ jobs:
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Sommes de contrôle
         env:
