@@ -70,6 +70,21 @@ jobs:
       - name: Tests du front
         run: npm --prefix app test
 
+      # Garde-fou du format de fichier. Les vecteurs sont gelés : les
+      # régénérer revient à changer les valeurs par défaut, ce qui doit être
+      # délibéré. Placé ici plutôt que dans un travail à part : le cœur est
+      # déjà compilé en release par les tests d'intégration de la CLI.
+      - name: Vecteurs de test gelés
+        run: |
+          cargo run --release --example gen_vectors -p coopacrypt-core
+          if ! git diff --quiet -- crates/coopacrypt-core/tests/vectors.json; then
+            echo "::error::Les vecteurs de test ne correspondent plus au code."
+            echo "Le format ou les paramètres par défaut ont changé."
+            echo "Si c'est délibéré, committez le vectors.json régénéré."
+            git diff --stat -- crates/coopacrypt-core/tests/vectors.json
+            exit 1
+          fi
+
   # Vérifie que l'application se compile partout où elle est distribuée. On ne
   # produit pas les paquets ici : c'est long, et c'est le rôle de la release.
   compile:
@@ -106,29 +121,13 @@ jobs:
 
       - run: npm --prefix app ci
 
-      # Le bundle du front doit exister : le backend l'embarque en release.
+      # Le bundle du front doit exister : la génération du contexte Tauri
+      # vérifie la présence de `frontendDist`.
       - run: npm --prefix app run build
 
+      # Profil debug, pas release : le profil release (LTO, une seule unité
+      # de codegen) multiplie le temps de compilation sans rien apprendre de
+      # plus sur la portabilité du code. Les vrais paquets sont construits
+      # par la release.
       - name: Compiler l'application et la CLI
-        run: cargo build --release --workspace
-
-  # Garde-fou du format de fichier. Les vecteurs sont gelés : les régénérer
-  # revient à changer les valeurs par défaut, ce qui doit être délibéré.
-  vectors:
-    name: Vecteurs de test gelés
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Régénérer et comparer
-        run: |
-          cargo run --release --example gen_vectors -p coopacrypt-core
-          if ! git diff --quiet -- crates/coopacrypt-core/tests/vectors.json; then
-            echo "::error::Les vecteurs de test ne correspondent plus au code."
-            echo "Le format ou les paramètres par défaut ont changé."
-            echo "Si c'est délibéré, committez le vectors.json régénéré."
-            git diff --stat -- crates/coopacrypt-core/tests/vectors.json
-            exit 1
-          fi
+        run: cargo build --workspace
