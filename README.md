@@ -161,32 +161,6 @@ defaults, so an old vault is silently upgraded the first time you save it.
   smuggled into a document would otherwise run with the application's privileges.
 - The application makes **no network requests at all**.
 
-### Opening a vault by double-click
-
-`.coocrypt` files are associated with the application, so a double-click opens the vault
-and asks for its password straight away. The association is declared two ways, because
-neither alone is enough:
-
-- The **installers** register it at install time — the Windows registry, the macOS
-  `Info.plist`, the Linux `.desktop` entry.
-- On Windows the application also registers itself **at startup**, under
-  `HKEY_CURRENT_USER`, covering what an installer cannot: an executable copied by hand, a
-  portable copy on a USB stick, or an association overwritten since.
-
-Self-registration makes CoopaCrypt *available* as a handler. It becomes the *default* only
-if you have not already picked something else: since Windows 8 that choice is
-hash-protected and changeable only from system settings. An application that reassigned
-your file types while starting up would be misbehaving.
-
-Startup registration is **skipped in debug builds** — it would point into `target/debug`,
-and a `cargo clean` would leave a dangling association. Set
-`COOPACRYPT_REGISTER_ASSOC=1` to force it when testing.
-
-Only **one instance** runs at a time. Double-clicking a vault while the application is
-already open hands the file to the existing window instead of starting a second process.
-That is not cosmetic: writes are atomic but not concurrent, so two windows editing one
-vault would let the last save silently discard the other's work.
-
 ### What it does not protect against
 
 Being explicit matters more than sounding reassuring:
@@ -313,26 +287,11 @@ silently changes the format and orphans existing vaults.
 
 ---
 
-## Version 1 (superseded)
-
-The original Windows-only WPF application lives under `CoopaCrypt/` and `WapProj/`. Its
-encryption should not be trusted: the key was a bare `SHA256` of the password with no salt
-and no KDF, the AES-CBC initialisation vector was a constant shared by every file and every
-user, and nothing authenticated the ciphertext.
-
-Version 2 does not read version 1 files, and there is no migration path. If you still hold
-a v1 vault, open it with the old application, copy the text out, and paste it into a new
-one.
-
----
-
 ## Documentation
 
 | | |
 |---|---|
 | [`FORMAT.md`](FORMAT.md) | File format specification — frozen, with test vectors |
-| [`UI.md`](UI.md) | Navigation and editing model |
-| [`evols.md`](evols.md) | Analysis, decisions and roadmap |
 
 ## Licence
 
