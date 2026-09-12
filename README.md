@@ -12,6 +12,8 @@ attacked to get in.
 The editor shows **one chapter at a time**, navigated from a side panel built from your
 Markdown headings. Long vaults stay readable instead of turning into an endless scroll.
 
+![CoopaCrypt: an open vault, with the chapter panel on the left and the Markdown editor rendering a heading, a table and the current line's source](screen.png)
+
 ---
 
 ## Download
