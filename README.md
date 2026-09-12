@@ -275,7 +275,7 @@ button.
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `.github/workflows/ci.yml` | every pull request, and every push to `master` | format, clippy (warnings are errors), Rust tests, CLI integration tests, TypeScript type-check, frontend tests, compile check on Linux/Windows/macOS, and a **frozen-test-vector guard** |
+| `.github/workflows/ci.yml` | every pull request | format, clippy (warnings are errors), Rust tests, CLI integration tests, TypeScript type-check, frontend tests, compile check on Linux/Windows/macOS, and a **frozen-test-vector guard** |
 | `.github/workflows/release.yml` | a pull request from a `v<major>.<minor>.<patch>` branch merged into `master` | tags the merge commit `v<version>`, builds every package listed under [Download](#download), generates `SHA256SUMS`, then publishes |
 
 Cutting a release:

@@ -1,12 +1,12 @@
 name: CI
 
-# `push` est limité à `master` : une branche en pull request est déjà
-# vérifiée par l'événement `pull_request`, et l'écouter aussi en `push`
-# lançait chaque travail deux fois. Une branche sans pull request n'est pas
-# vérifiée automatiquement ; `workflow_dispatch` permet de le faire à la main.
+# Uniquement sur pull request : GitHub y teste la fusion d'essai de la branche
+# avec `master`, c'est-à-dire exactement ce qui arrivera sur `master` à la
+# fusion. Relancer ensuite sur `push` refaisait le même travail une seconde
+# fois. `master` n'est donc vérifié qu'à travers les pull requests — ce qui
+# suppose de ne pas y pousser directement. `workflow_dispatch` permet de
+# vérifier une branche à la main.
 on:
-  push:
-    branches: [master]
   pull_request:
   workflow_dispatch:
 
