@@ -1,8 +1,12 @@
 name: CI
 
+# `push` est limité à `master` : une branche en pull request est déjà
+# vérifiée par l'événement `pull_request`, et l'écouter aussi en `push`
+# lançait chaque travail deux fois. Une branche sans pull request n'est pas
+# vérifiée automatiquement ; `workflow_dispatch` permet de le faire à la main.
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
