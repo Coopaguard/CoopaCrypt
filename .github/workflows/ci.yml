@@ -28,7 +28,7 @@ jobs:
     name: Qualité et tests
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Dépendances système Tauri
         run: |
@@ -43,9 +43,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -98,7 +98,7 @@ jobs:
           - { os: windows-latest, label: 'Windows x64' }
           - { os: macos-latest, label: 'macOS ARM64' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Dépendances système Tauri
         if: runner.os == 'Linux'
@@ -117,9 +117,9 @@ jobs:
         with:
           key: ${{ matrix.os }}-debug
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 

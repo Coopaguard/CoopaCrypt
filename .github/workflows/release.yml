@@ -54,7 +54,7 @@ jobs:
       # Sur l'événement `pull_request`, la référence par défaut est une fusion
       # d'essai éphémère : le commit à étiqueter est celui réellement arrivé
       # sur `master`.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
@@ -179,7 +179,7 @@ jobs:
             label: macOS x64
             args: '--target x86_64-apple-darwin'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
@@ -201,9 +201,9 @@ jobs:
         with:
           key: ${{ matrix.label }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -248,7 +248,7 @@ jobs:
           - { os: macos-latest, target: aarch64-apple-darwin, ext: '' }
           - { os: macos-latest, target: x86_64-apple-darwin, ext: '' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 
@@ -344,7 +344,7 @@ jobs:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           ref: ${{ needs.prepare.outputs.tag }}
 

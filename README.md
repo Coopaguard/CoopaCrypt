@@ -200,7 +200,7 @@ Being explicit matters more than sounding reassuring:
 | | |
 |---|---|
 | **Rust** | stable, 1.77 or newer ([rustup](https://rustup.rs)) |
-| **Node.js** | 20 or newer, with npm |
+| **Node.js** | 24 or newer, with npm (what CI uses) |
 | **Windows** | WebView2 runtime (preinstalled on Windows 11) and MSVC build tools |
 | **macOS** | Xcode command line tools |
 | **Linux** | `webkit2gtk-4.1`, `libayatana-appindicator3`, `librsvg2` — see the [Tauri prerequisites](https://tauri.app/start/prerequisites/) |
