@@ -109,9 +109,13 @@ jobs:
             patchelf xdg-utils
 
       - uses: dtolnay/rust-toolchain@stable
+      # Le profil fait partie de la clé : la clé par défaut ne dépend que du
+      # Cargo.lock, et un cache rempli d'artefacts release serait restauré tel
+      # quel, considéré à jour, et jamais complété par les artefacts debug —
+      # chaque exécution recompilerait alors tout.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}
+          key: ${{ matrix.os }}-debug
 
       - uses: actions/setup-node@v4
         with:

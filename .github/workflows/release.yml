@@ -1,18 +1,28 @@
 name: Release
 
-# Déclenchée par une étiquette de version : `git tag v2.1.0 && git push --tags`.
+# Déclenchée par chaque arrivée sur `master` — en pratique, la fusion d'une
+# pull request. La version publiée est celle de `tauri.conf.json` ; le
+# workflow pose lui-même l'étiquette `v<version>` sur le commit fusionné.
 #
-# L'ancien déclencheur sur fermeture de pull request publiait une release même
-# lorsque la pull request était fermée sans être fusionnée. Une étiquette est un
-# geste explicite, et elle porte le numéro de version.
+# Une fusion qui ne change pas la version ne publie rien : l'étiquette existe
+# déjà, le workflow s'arrête à `prepare`. Publier une nouvelle version revient
+# donc à incrémenter `version` dans les manifestes avant de fusionner.
+#
+# `workflow_dispatch` permet de relancer la publication d'une étiquette
+# existante, par exemple après l'échec d'un travail de construction.
 on:
   push:
-    tags: ['v*']
+    branches: [master]
   workflow_dispatch:
     inputs:
       tag:
         description: "Étiquette à publier (ex. v2.1.0)"
         required: true
+
+# Deux fusions rapprochées ne doivent pas se disputer la même release.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -21,36 +31,67 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Crée la release en brouillon d'abord : les travaux suivants y déposent
-  # leurs paquets, et elle n'est publiée qu'une fois tout arrivé.
+  # Détermine la version, pose l'étiquette, crée la release en brouillon :
+  # les travaux suivants y déposent leurs paquets, et elle n'est publiée
+  # qu'une fois tout arrivé.
   prepare:
     name: Préparer la release
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      publish: ${{ steps.meta.outputs.publish }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Vérifier la cohérence de la version
+      - name: Déterminer la version
         id: meta
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
           MANIFEST=$(node -p "require('./crates/coopacrypt-app/tauri.conf.json').version")
+          TAG="${{ github.event.inputs.tag }}"
+
+          if [ -n "$TAG" ]; then
+            # Relance manuelle : l'étiquette demandée doit correspondre à la
+            # version embarquée, sinon les paquets seraient mal nommés.
+            VERSION="${TAG#v}"
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+              exit 1
+            fi
+            PUBLISH=true
+          else
+            VERSION="$MANIFEST"
+            TAG="v$VERSION"
+            # Sur `master`, une étiquette déjà présente signifie que cette
+            # version est déjà publiée : la fusion n'a pas incrémenté la
+            # version, il n'y a rien à faire.
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "L'étiquette $TAG existe déjà : aucune release à publier."
+              PUBLISH=false
+            else
+              PUBLISH=true
+            fi
+          fi
 
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
 
-          # Publier une étiquette qui ne correspond pas à la version embarquée
-          # dans l'application donnerait des paquets mal nommés et des mises à
-          # jour incohérentes.
-          if [ "$VERSION" != "$MANIFEST" ]; then
-            echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
-            exit 1
+      # Étiquette légère posée sur le commit courant. Poussée avec le jeton du
+      # workflow, elle ne déclenche aucun autre workflow.
+      - name: Poser l'étiquette
+        if: steps.meta.outputs.publish == 'true'
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Étiquette $TAG déjà présente, conservée."
+          else
+            git tag "$TAG" "$GITHUB_SHA"
+            git push origin "refs/tags/$TAG"
           fi
 
       - name: Créer le brouillon
+        if: steps.meta.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,6 +112,7 @@ jobs:
   desktop:
     name: App ${{ matrix.label }}
     needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -101,6 +143,8 @@ jobs:
             args: '--target x86_64-apple-darwin'
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Dépendances système Tauri
         if: runner.os == 'Linux'
@@ -149,6 +193,7 @@ jobs:
   cli:
     name: CLI ${{ matrix.target }}
     needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -162,6 +207,8 @@ jobs:
           - { os: macos-latest, target: x86_64-apple-darwin, ext: '' }
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Chaîne de compilation musl
         if: contains(matrix.target, 'musl')

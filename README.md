@@ -259,19 +259,22 @@ button.
 | Workflow | Trigger | What it does |
 |---|---|---|
 | `.github/workflows/ci.yml` | every pull request, and every push to `master` | format, clippy (warnings are errors), Rust tests, CLI integration tests, TypeScript type-check, frontend tests, compile check on Linux/Windows/macOS, and a **frozen-test-vector guard** |
-| `.github/workflows/release.yml` | a `v*` tag | builds every package listed under [Download](#download), generates `SHA256SUMS`, then publishes |
+| `.github/workflows/release.yml` | every push to `master` (i.e. a merged pull request) | tags the commit `v<version>`, builds every package listed under [Download](#download), generates `SHA256SUMS`, then publishes |
 
-Cutting a release:
+Cutting a release means bumping the version, then merging:
 
-```bash
-# The tag must match the version in crates/coopacrypt-app/tauri.conf.json —
-# the workflow refuses to publish a mismatch.
-git tag v2.1.0
-git push origin v2.1.0
-```
+1. Set the new version in `Cargo.toml`, `Cargo.lock`, `app/package.json`,
+   `app/package-lock.json`, `crates/coopacrypt-app/tauri.conf.json`, `flake.nix`
+   and `packaging/PKGBUILD`.
+2. Open a pull request and merge it.
 
-The release is created as a draft, filled in by every build job, and only published once
-all of them have succeeded.
+The workflow reads the version from `tauri.conf.json`, tags the merge commit
+`v<version>`, creates a draft release, fills it in from every build job, and only
+publishes once all of them have succeeded. A merge that does not change the version
+publishes nothing — the tag already exists, so the workflow stops right away.
+
+To retry a failed publication, run the workflow by hand from the Actions tab with the
+existing tag.
 
 The frozen-vector guard deserves a word: CI regenerates `vectors.json` and fails if it
 differs from what is committed. A change to the file format, or merely to the default
