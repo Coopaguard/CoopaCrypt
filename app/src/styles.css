@@ -518,6 +518,17 @@ dialog.password h2 {
   max-width: 34em;
 }
 
+/* Notes de version : texte brut du manifeste, sauts de ligne conservés. */
+.update-notes {
+  white-space: pre-wrap;
+  max-height: 12em;
+  overflow-y: auto;
+}
+
+.update-notes:empty {
+  display: none;
+}
+
 /* --- voile d'attente --- */
 
 .busy-overlay {

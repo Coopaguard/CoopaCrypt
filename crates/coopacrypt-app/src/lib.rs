@@ -12,6 +12,7 @@ mod assoc;
 mod atomic;
 mod launch;
 mod session;
+mod update;
 
 use std::path::PathBuf;
 
@@ -289,8 +290,10 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             app.manage(Session::default());
+            app.manage(update::PendingUpdate::default());
 
             let pending = Pending::default();
             // Windows et Linux transmettent le chemin en argument. Sur macOS
@@ -332,6 +335,8 @@ pub fn run() {
             session_state,
             session_touch,
             pending_vault,
+            update::update_check,
+            update::update_install,
         ])
         .build(tauri::generate_context!())
         .expect("démarrage de l'application")

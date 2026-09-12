@@ -24,6 +24,13 @@ export interface VaultInfo {
   up_to_date: boolean;
 }
 
+/** Une version plus récente que celle en cours d'exécution. */
+export interface UpdateAvailable {
+  version: string;
+  current: string;
+  notes: string | null;
+}
+
 export const api = {
   open: (path: string, password: string) => invoke<string>('vault_open', { path, password }),
   create: (path: string, password: string) => invoke<void>('vault_create', { path, password }),
@@ -43,7 +50,22 @@ export const api = {
    * rouvre pas le fichier du lancement précédent.
    */
   pendingVault: () => invoke<string | null>('pending_vault'),
+  /**
+   * Version plus récente disponible, s'il y en a une.
+   *
+   * Rend `null` aussi quand la vérification échoue (pas de réseau, serveur
+   * injoignable) : l'échec est silencieux, par construction.
+   */
+  updateCheck: () => invoke<UpdateAvailable | null>('update_check'),
+  /**
+   * Télécharge et installe la version trouvée par `updateCheck`, puis relance
+   * l'application. Ne rend la main qu'en cas d'échec.
+   */
+  updateInstall: () => invoke<void>('update_install'),
 };
+
+/** Progression du téléchargement de la mise à jour, en pourcentage. */
+export const EVENT_UPDATE_PROGRESS = 'update://progress';
 
 /**
  * Émis quand un coffre attend d'être ouvert.

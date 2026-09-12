@@ -52,7 +52,7 @@
           # dérivation se réduit à une compilation Rust.
           cli = pkgs.rustPlatform.buildRustPackage {
             pname = "coopacrypt-cli";
-            version = "0.2.1";
+            version = "2.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
 
@@ -80,7 +80,7 @@
           # `npmDeps` ci-dessous, dont le hachage est à renseigner.
           app = pkgs.rustPlatform.buildRustPackage rec {
             pname = "coopacrypt";
-            version = "0.2.1";
+            version = "2.1.0";
             src = ./.;
             cargoLock.lockFile = ./Cargo.lock;
 

@@ -1,8 +1,12 @@
 name: CI
 
+# `push` est limité à `master` : une branche en pull request est déjà
+# vérifiée par l'événement `pull_request`, et l'écouter aussi en `push`
+# lançait chaque travail deux fois. Une branche sans pull request n'est pas
+# vérifiée automatiquement ; `workflow_dispatch` permet de le faire à la main.
 on:
   push:
-    branches: ['**']
+    branches: [master]
   pull_request:
   workflow_dispatch:
 
@@ -24,7 +28,7 @@ jobs:
     name: Qualité et tests
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Dépendances système Tauri
         run: |
@@ -39,9 +43,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -66,6 +70,21 @@ jobs:
       - name: Tests du front
         run: npm --prefix app test
 
+      # Garde-fou du format de fichier. Les vecteurs sont gelés : les
+      # régénérer revient à changer les valeurs par défaut, ce qui doit être
+      # délibéré. Placé ici plutôt que dans un travail à part : le cœur est
+      # déjà compilé en release par les tests d'intégration de la CLI.
+      - name: Vecteurs de test gelés
+        run: |
+          cargo run --release --example gen_vectors -p coopacrypt-core
+          if ! git diff --quiet -- crates/coopacrypt-core/tests/vectors.json; then
+            echo "::error::Les vecteurs de test ne correspondent plus au code."
+            echo "Le format ou les paramètres par défaut ont changé."
+            echo "Si c'est délibéré, committez le vectors.json régénéré."
+            git diff --stat -- crates/coopacrypt-core/tests/vectors.json
+            exit 1
+          fi
+
   # Vérifie que l'application se compile partout où elle est distribuée. On ne
   # produit pas les paquets ici : c'est long, et c'est le rôle de la release.
   compile:
@@ -79,7 +98,7 @@ jobs:
           - { os: windows-latest, label: 'Windows x64' }
           - { os: macos-latest, label: 'macOS ARM64' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Dépendances système Tauri
         if: runner.os == 'Linux'
@@ -90,41 +109,29 @@ jobs:
             patchelf xdg-utils
 
       - uses: dtolnay/rust-toolchain@stable
+      # Le profil fait partie de la clé : la clé par défaut ne dépend que du
+      # Cargo.lock, et un cache rempli d'artefacts release serait restauré tel
+      # quel, considéré à jour, et jamais complété par les artefacts debug —
+      # chaque exécution recompilerait alors tout.
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}
+          key: ${{ matrix.os }}-debug
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
       - run: npm --prefix app ci
 
-      # Le bundle du front doit exister : le backend l'embarque en release.
+      # Le bundle du front doit exister : la génération du contexte Tauri
+      # vérifie la présence de `frontendDist`.
       - run: npm --prefix app run build
 
+      # Profil debug, pas release : le profil release (LTO, une seule unité
+      # de codegen) multiplie le temps de compilation sans rien apprendre de
+      # plus sur la portabilité du code. Les vrais paquets sont construits
+      # par la release.
       - name: Compiler l'application et la CLI
-        run: cargo build --release --workspace
-
-  # Garde-fou du format de fichier. Les vecteurs sont gelés : les régénérer
-  # revient à changer les valeurs par défaut, ce qui doit être délibéré.
-  vectors:
-    name: Vecteurs de test gelés
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Régénérer et comparer
-        run: |
-          cargo run --release --example gen_vectors -p coopacrypt-core
-          if ! git diff --quiet -- crates/coopacrypt-core/tests/vectors.json; then
-            echo "::error::Les vecteurs de test ne correspondent plus au code."
-            echo "Le format ou les paramètres par défaut ont changé."
-            echo "Si c'est délibéré, committez le vectors.json régénéré."
-            git diff --stat -- crates/coopacrypt-core/tests/vectors.json
-            exit 1
-          fi
+        run: cargo build --workspace

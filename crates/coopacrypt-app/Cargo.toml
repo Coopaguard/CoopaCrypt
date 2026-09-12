@@ -22,6 +22,9 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 coopacrypt-core = { path = "../coopacrypt-core" }
 serde = { version = "1", features = ["derive"] }
+# Requis par `generate_context!` dès que `tauri.conf.json` porte une section
+# `plugins` : la configuration du plugin y est embarquée sous forme de JSON.
+serde_json = "1"
 # `image-png` permet de charger l'icône de fenêtre depuis un PNG embarqué.
 tauri = { version = "2", features = ["image-png"] }
 tauri-plugin-dialog = "2"
@@ -29,6 +32,9 @@ tauri-plugin-dialog = "2"
 # instance unique, deux fenêtres pourraient éditer le même fichier et le
 # dernier enregistrement écraserait l'autre en silence.
 tauri-plugin-single-instance = "2"
+# Vérification et installation des mises à jour, côté Rust : la page ne fait
+# que poser la question et afficher la réponse.
+tauri-plugin-updater = "2"
 zeroize = { version = "1", features = ["derive"] }
 
 # Enregistrement de l'association `.coocrypt` dans la base de registre.

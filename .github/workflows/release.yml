@@ -1,18 +1,32 @@
 name: Release
 
-# Déclenchée par une étiquette de version : `git tag v0.2.0 && git push --tags`.
+# Déclenchée par la fusion d'une pull request sur `master`, à condition que la
+# branche source soit une branche de version, nommée `v<major>.<minor>.<patch>`
+# (ex. `v2.1.0`). La fusion d'une branche `feature/…` ou `fix/…` ne publie rien.
 #
-# L'ancien déclencheur sur fermeture de pull request publiait une release même
-# lorsque la pull request était fermée sans être fusionnée. Une étiquette est un
-# geste explicite, et elle porte le numéro de version.
+# Le nom de la branche doit correspondre à la version de `tauri.conf.json` :
+# c'est la même garantie qu'apportait l'ancienne vérification de l'étiquette.
+# Le workflow pose lui-même l'étiquette `v<version>` sur le commit de fusion.
+#
+# Une pull request fermée sans être fusionnée ne publie rien non plus : c'est
+# le point qui manquait à l'ancien déclencheur sur fermeture.
+#
+# `workflow_dispatch` permet de relancer la publication d'une étiquette
+# existante, par exemple après l'échec d'un travail de construction.
 on:
-  push:
-    tags: ['v*']
+  pull_request:
+    types: [closed]
+    branches: [master]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Étiquette à publier (ex. v0.2.0)"
+        description: "Étiquette à publier (ex. v2.1.0)"
         required: true
+
+# Deux fusions rapprochées ne doivent pas se disputer la même release.
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -21,36 +35,100 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Crée la release en brouillon d'abord : les travaux suivants y déposent
-  # leurs paquets, et elle n'est publiée qu'une fois tout arrivé.
+  # Détermine la version, pose l'étiquette, crée la release en brouillon :
+  # les travaux suivants y déposent leurs paquets, et elle n'est publiée
+  # qu'une fois tout arrivé.
   prepare:
     name: Préparer la release
+    # Une pull request fermée sans fusion s'arrête ici. Le filtrage sur le nom
+    # de la branche se fait à l'étape suivante : les expressions GitHub n'ont
+    # pas d'expressions régulières.
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
     runs-on: ubuntu-22.04
     outputs:
       tag: ${{ steps.meta.outputs.tag }}
       version: ${{ steps.meta.outputs.version }}
+      publish: ${{ steps.meta.outputs.publish }}
+      sha: ${{ steps.meta.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
+      # Sur l'événement `pull_request`, la référence par défaut est une fusion
+      # d'essai éphémère : le commit à étiqueter est celui réellement arrivé
+      # sur `master`.
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
 
-      - name: Vérifier la cohérence de la version
-        id: meta
+      # Les paquets de mise à jour sont signés : sans la clé, `tauri build`
+      # échoue sur chacun des six runners de bureau. Autant le dire ici, une
+      # fois, avant d'en lancer douze.
+      - name: Vérifier la clé de signature des mises à jour
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
-          MANIFEST=$(node -p "require('./crates/coopacrypt-app/tauri.conf.json').version")
-
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-          # Publier une étiquette qui ne correspond pas à la version embarquée
-          # dans l'application donnerait des paquets mal nommés et des mises à
-          # jour incohérentes.
-          if [ "$VERSION" != "$MANIFEST" ]; then
-            echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Secret TAURI_SIGNING_PRIVATE_KEY absent : les paquets de mise à jour ne peuvent pas être signés (voir README, « Cutting a release »)."
             exit 1
           fi
 
+      - name: Déterminer la version
+        id: meta
+        env:
+          SOURCE_BRANCH: ${{ github.head_ref }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          SHA: ${{ github.event.pull_request.merge_commit_sha || github.sha }}
+        run: |
+          MANIFEST=$(node -p "require('./crates/coopacrypt-app/tauri.conf.json').version")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          if [ -n "$INPUT_TAG" ]; then
+            # Relance manuelle : l'étiquette demandée doit correspondre à la
+            # version embarquée, sinon les paquets seraient mal nommés.
+            TAG="$INPUT_TAG"
+            VERSION="${TAG#v}"
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "::error::L'étiquette $TAG annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+              exit 1
+            fi
+            PUBLISH=true
+          elif [[ ! "$SOURCE_BRANCH" =~ ^[vV][0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "La branche « $SOURCE_BRANCH » n'est pas une branche de version (v<major>.<minor>.<patch>) : aucune release à publier."
+            TAG="" VERSION="" PUBLISH=false
+          else
+            VERSION="${SOURCE_BRANCH#[vV]}"
+            TAG="v$VERSION"
+            # Une branche `v2.1.0` qui embarque une application en 2.0.0
+            # produirait des paquets mal nommés : c'est une erreur, pas un cas
+            # à ignorer.
+            if [ "$VERSION" != "$MANIFEST" ]; then
+              echo "::error::La branche $SOURCE_BRANCH annonce $VERSION, tauri.conf.json déclare $MANIFEST."
+              exit 1
+            fi
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+              echo "::error::L'étiquette $TAG existe déjà : cette version est déjà publiée."
+              exit 1
+            fi
+            PUBLISH=true
+          fi
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "publish=$PUBLISH" >> "$GITHUB_OUTPUT"
+
+      # Étiquette légère posée sur le commit de fusion. Poussée avec le jeton
+      # du workflow, elle ne déclenche aucun autre workflow.
+      - name: Poser l'étiquette
+        if: steps.meta.outputs.publish == 'true'
+        run: |
+          TAG="${{ steps.meta.outputs.tag }}"
+          if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "Étiquette $TAG déjà présente, conservée."
+          else
+            git tag "$TAG" "${{ steps.meta.outputs.sha }}"
+            git push origin "refs/tags/$TAG"
+          fi
+
       - name: Créer le brouillon
+        if: steps.meta.outputs.publish == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -71,6 +149,7 @@ jobs:
   desktop:
     name: App ${{ matrix.label }}
     needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -100,7 +179,9 @@ jobs:
             label: macOS x64
             args: '--target x86_64-apple-darwin'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Dépendances système Tauri
         if: runner.os == 'Linux'
@@ -120,9 +201,9 @@ jobs:
         with:
           key: ${{ matrix.label }}
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: app/package-lock.json
 
@@ -132,6 +213,11 @@ jobs:
         uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Signature minisign des paquets de mise à jour. L'action dépose
+          # aussi `latest.json`, le manifeste que l'application interroge au
+          # démarrage, en y fusionnant la plateforme de chaque runner.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           # La configuration Tauri vit dans `crates/coopacrypt-app` ; la CLI la
           # découvre depuis la racine du dépôt.
@@ -149,6 +235,7 @@ jobs:
   cli:
     name: CLI ${{ matrix.target }}
     needs: prepare
+    if: needs.prepare.outputs.publish == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -161,7 +248,9 @@ jobs:
           - { os: macos-latest, target: aarch64-apple-darwin, ext: '' }
           - { os: macos-latest, target: x86_64-apple-darwin, ext: '' }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Chaîne de compilation musl
         if: contains(matrix.target, 'musl')
@@ -255,7 +344,9 @@ jobs:
       GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
       GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.prepare.outputs.tag }}
 
       - name: Sommes de contrôle
         env:
@@ -328,6 +419,9 @@ jobs:
           | Fedora, openSUSE | `.rpm` |
           | Arch, NixOS, autres | `.AppImage`, ou voir `packaging/` |
           | Ligne de commande, toute distribution Linux | `coopacrypt-cli-*-musl.tar.gz`, binaire statique |
+
+          Une fois installée, l'application vérifie à chaque démarrage si une version
+          plus récente existe et propose de l'installer.
 
           Les paquets ne sont **pas signés** : Windows SmartScreen et macOS Gatekeeper
           afficheront un avertissement d'éditeur inconnu. Il faut passer par
