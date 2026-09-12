@@ -46,7 +46,7 @@ this repository, at that commit, built by that workflow. Nothing was signed on a
 laptop:
 
 ```bash
-gh attestation verify coopacrypt_0.2.0_x64-setup.exe -R Coopaguard/CoopaCrypt
+gh attestation verify coopacrypt_2.1.0_x64-setup.exe -R Coopaguard/CoopaCrypt
 ```
 
 Failing that, every release carries a `SHA256SUMS` file:
@@ -266,8 +266,8 @@ Cutting a release:
 ```bash
 # The tag must match the version in crates/coopacrypt-app/tauri.conf.json —
 # the workflow refuses to publish a mismatch.
-git tag v0.2.0
-git push origin v0.2.0
+git tag v2.1.0
+git push origin v2.1.0
 ```
 
 The release is created as a draft, filled in by every build job, and only published once

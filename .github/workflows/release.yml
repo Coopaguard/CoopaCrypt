@@ -1,6 +1,6 @@
 name: Release
 
-# Déclenchée par une étiquette de version : `git tag v0.2.0 && git push --tags`.
+# Déclenchée par une étiquette de version : `git tag v2.1.0 && git push --tags`.
 #
 # L'ancien déclencheur sur fermeture de pull request publiait une release même
 # lorsque la pull request était fermée sans être fusionnée. Une étiquette est un
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Étiquette à publier (ex. v0.2.0)"
+        description: "Étiquette à publier (ex. v2.1.0)"
         required: true
 
 permissions:
