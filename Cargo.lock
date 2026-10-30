@@ -693,7 +693,7 @@ dependencies = [
 
 [[package]]
 name = "coopacrypt-app"
-version = "2.1.0"
+version = "2.2.1"
 dependencies = [
  "coopacrypt-core",
  "serde",
@@ -710,7 +710,7 @@ dependencies = [
 
 [[package]]
 name = "coopacrypt-cli"
-version = "2.1.0"
+version = "2.2.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -721,7 +721,7 @@ dependencies = [
 
 [[package]]
 name = "coopacrypt-core"
-version = "2.1.0"
+version = "2.2.1"
 dependencies = [
  "argon2",
  "chacha20poly1305",

@@ -48,7 +48,7 @@ this repository, at that commit, built by that workflow. Nothing was signed on a
 laptop:
 
 ```bash
-gh attestation verify coopacrypt_2.1.0_x64-setup.exe -R Coopaguard/CoopaCrypt
+gh attestation verify coopacrypt_2.2.1_x64-setup.exe -R Coopaguard/CoopaCrypt
 ```
 
 Failing that, every release carries a `SHA256SUMS` file:
