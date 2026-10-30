@@ -130,6 +130,9 @@ input[type='password'] {
   display: flex;
   gap: 10px;
   justify-content: center;
+  /* Trois actions possibles : sur une fenêtre étroite, elles passent à la ligne
+     plutôt que de déborder de la carte. */
+  flex-wrap: wrap;
 }
 
 .error {
