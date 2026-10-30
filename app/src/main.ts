@@ -54,6 +54,19 @@ const state: State = {
 
 let view: EditorView;
 let lastTouch = 0;
+/**
+ * Dernier coffre ouvert pendant cette session, proposé à la réouverture.
+ *
+ * Le verrouillage efface le chemin côté Rust avec le mot de passe : sans cette
+ * mémoire, retrouver son coffre après un verrouillage automatique impose de le
+ * redésigner dans le sélecteur de fichier, alors que la seule chose qui manque
+ * est le mot de passe.
+ *
+ * Un chemin n'est pas du contenu de coffre (cf. `SessionState::path`), mais il
+ * ne vit que dans cette variable : rien n'est écrit sur le disque, et un
+ * redémarrage de l'application repart d'un écran vierge.
+ */
+let lastVaultPath: string | null = null;
 /** Vrai pendant une opération de chiffrement en cours. */
 let busy = false;
 /**
@@ -90,6 +103,8 @@ const searchPanel = el('search-panel');
 const searchInput = el<HTMLInputElement>('search-input');
 const replaceInput = el<HTMLInputElement>('replace-input');
 const caseSensitive = el<HTMLInputElement>('search-case');
+const btnReopen = el<HTMLButtonElement>('btn-unlock-reopen');
+const btnUnlockOpen = el<HTMLButtonElement>('btn-unlock-open');
 
 // --- rendu ----------------------------------------------------------------
 
@@ -371,7 +386,24 @@ function toggleSearch(show: boolean) {
 
 // --- cycle de vie du coffre -----------------------------------------------
 
+/**
+ * Met l'écran verrouillé en accord avec le coffre dont on se souvient.
+ *
+ * Quand une réouverture est possible, c'est l'action la plus probable : elle
+ * prend le rôle d'action principale, qu'il n'y aurait aucun sens à afficher deux
+ * fois. Elle reçoit aussi le focus, pour que la touche Entrée suffise.
+ */
+function refreshReopen() {
+  const path = lastVaultPath;
+  btnReopen.hidden = path === null;
+  btnReopen.title = path === null ? '' : `Réouvrir ${fileName(path)}`;
+  btnReopen.classList.toggle('primary', path !== null);
+  btnUnlockOpen.classList.toggle('primary', path === null);
+  if (path !== null && !screenLocked.hidden) btnReopen.focus();
+}
+
 function loadDocument(content: string, path: string) {
+  lastVaultPath = path;
   state.document = content;
   state.chapters = splitChapters(content);
   state.current = 0;
@@ -416,6 +448,30 @@ async function lock(reason?: string) {
   screenLocked.hidden = false;
   statusTimer.textContent = '';
   unlockError.textContent = reason ?? '';
+
+  // Le coffre reste connu : seul le mot de passe a été oublié.
+  refreshReopen();
+}
+
+/**
+ * Rouvre le dernier coffre de la session.
+ *
+ * Mène directement à la saisie du mot de passe : le fichier est déjà désigné,
+ * repasser par le sélecteur ne servirait qu'à le redésigner à l'identique.
+ *
+ * Si le fichier a disparu ou été déplacé entre temps, l'échec est signalé dans
+ * la fenêtre de saisie comme pour toute ouverture, et l'utilisateur en sort en
+ * annulant.
+ */
+function reopenVault() {
+  return withFlow(async () => {
+    const path = lastVaultPath;
+    if (path === null) return;
+    if (!(await confirmDiscard())) return;
+
+    unlockError.textContent = '';
+    await unlockFile(path);
+  });
 }
 
 function openVault() {
@@ -545,6 +601,8 @@ async function saveAsFlow() {
     return true;
   });
   if (done) {
+    // La session suit le nouveau chemin : une réouverture doit le suivre aussi.
+    lastVaultPath = selected;
     state.dirty = false;
     refreshStatus();
     setStatus(`Enregistré sous ${fileName(selected)}`);
@@ -888,6 +946,7 @@ function wireUp() {
   el('btn-open').addEventListener('click', () => void openVault());
   el('btn-unlock-open').addEventListener('click', () => void openVault());
   el('btn-unlock-new').addEventListener('click', () => void newVault());
+  btnReopen.addEventListener('click', () => void reopenVault());
   el('btn-save').addEventListener('click', () => void save());
   el('btn-save-as').addEventListener('click', () => void saveAs());
   el('btn-chpass').addEventListener('click', () => void changePassword());
@@ -938,6 +997,9 @@ function wireUp() {
       await getCurrentWindow().destroy();
     }
   });
+
+  // Aucun coffre connu au démarrage : la réouverture reste masquée.
+  refreshReopen();
 
   window.setInterval(() => void pollSession(), SESSION_POLL_MS);
   void pollSession();

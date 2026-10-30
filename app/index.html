@@ -18,6 +18,13 @@
         <p class="subtitle">Coffre de texte chiffré</p>
         <p id="unlock-error" class="error" role="alert"></p>
         <div class="locked-actions">
+          <!--
+            Réouverture du dernier coffre de la session : masqué tant qu'aucun
+            coffre n'a été ouvert. Le nom du fichier n'est porté que par
+            l'infobulle, mise à jour par la page — l'écran verrouillé n'affiche
+            rien qui désigne le coffre en permanence.
+          -->
+          <button id="btn-unlock-reopen" type="button" hidden>Réouvrir</button>
           <button id="btn-unlock-open" type="button" class="primary">Ouvrir un coffre…</button>
           <button id="btn-unlock-new" type="button">Nouveau coffre…</button>
         </div>
